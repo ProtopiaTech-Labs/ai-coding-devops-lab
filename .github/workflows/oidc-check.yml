@@ -1,0 +1,38 @@
+name: oidc-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      login:
+        description: Run azure/login with the managed identity
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment: lab
+    steps:
+      - name: Print the OIDC sub claim
+        run: |
+          token=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)
+          payload=$(echo "$token" | cut -d. -f2 | tr '_-' '/+')
+          while (( ${#payload} % 4 )); do payload="$payload="; done
+          echo "sub: $(echo "$payload" | base64 -d | jq -r .sub)"
+
+      - name: Azure login
+        if: inputs.login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Show the subscription
+        if: inputs.login
+        run: az account show --query name -o tsv
