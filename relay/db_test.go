@@ -32,7 +32,7 @@ func TestMigrateTwice(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM namespaces`).Scan(&n); err != nil || n != 1 {
 		t.Errorf("namespaces rows = %d, %v; want 1", n, err)
 	}
-	for _, table := range []string{"webhook_urls", "deliveries", "journal"} {
+	for _, table := range []string{"webhook_urls", "deliveries", "journal", "github_events"} {
 		if _, err := db.Exec(`SELECT * FROM ` + table + ` LIMIT 0`); err != nil {
 			t.Errorf("table %s: %v", table, err)
 		}

@@ -59,6 +59,24 @@ var migrations = []string{
 	);
 	CREATE INDEX journal_participant ON journal(participant_id, created_at);
 	CREATE INDEX journal_created ON journal(created_at);`,
+
+	// Webhook and API (T04, T05).
+	`ALTER TABLE deliveries ADD COLUMN event TEXT;  -- X-GitHub-Event
+	ALTER TABLE journal ADD COLUMN command TEXT;    -- drift: what the agent ran
+	ALTER TABLE journal ADD COLUMN undo TEXT;       -- drift: how to revert it
+	CREATE INDEX journal_updated ON journal(updated_at);
+
+	-- Every POST /webhook/github, for the admin view: routed, unrouted, ignored, HMAC errors.
+	CREATE TABLE github_events (
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		event           TEXT,
+		github_delivery TEXT,
+		namespace       TEXT,
+		participant_id  TEXT,
+		outcome         TEXT NOT NULL,  -- forwarded, no_url, unrouted, ignored, ping, bad_signature, bad_request
+		detail          TEXT,
+		created_at      TEXT NOT NULL
+	);`,
 }
 
 // openDB opens (or creates) the SQLite file and applies pending migrations.

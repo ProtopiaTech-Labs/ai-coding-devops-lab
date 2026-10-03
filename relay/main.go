@@ -1,5 +1,5 @@
-// Command relay discovers participant namespaces in the lab cluster and, in
-// later steps, forwards GitHub webhooks to them and keeps a chaos journal.
+// Command relay discovers participant namespaces in the lab cluster, forwards
+// GitHub deployment_status webhooks to their owners and keeps a chaos journal.
 package main
 
 import (
@@ -43,6 +43,8 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	api := newServer(cfg, db, log)
+	api.routes(mux)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           mux,
@@ -51,6 +53,9 @@ func main() {
 	}
 	log.Info("starting", "version", version, "port", cfg.Port, "participants", len(cfg.Participants),
 		"db", cfg.DBPath, "discovery_interval", cfg.DiscoveryInterval.String())
+	if cfg.AllowPrivateTargets {
+		log.Warn("RELAY_ALLOW_PRIVATE_TARGETS=true: webhook URLs may use http:// and private addresses (local tests only)")
+	}
 
 	go newDiscovery(db, log, cfg.Participants).run(ctx, kube, cfg.DiscoveryInterval)
 	go func() {
@@ -63,6 +68,7 @@ func main() {
 		log.Error("server stopped", "err", err)
 		os.Exit(1)
 	}
+	api.wait() // in-flight forwards end within their 10 s timeout
 	log.Info("stopped")
 }
 

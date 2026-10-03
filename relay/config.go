@@ -25,6 +25,9 @@ type config struct {
 	Port              string
 	TargetDomain      string
 	DiscoveryInterval time.Duration
+	// AllowPrivateTargets lets webhook URLs use http:// and loopback or
+	// private addresses. Local tests only, never in the cluster.
+	AllowPrivateTargets bool
 }
 
 var participantID = regexp.MustCompile(`^p[0-9]{2}$`)
@@ -35,6 +38,8 @@ func loadConfig() (*config, error) {
 		DBPath:       envOr("DB_PATH", "/data/relay.db"),
 		Port:         envOr("PORT", "8080"),
 		TargetDomain: envOr("TARGET_DOMAIN", "lab.patoarchitekci.io"),
+
+		AllowPrivateTargets: os.Getenv("RELAY_ALLOW_PRIVATE_TARGETS") == "true",
 	}
 	var err error
 	if c.DiscoveryInterval, err = time.ParseDuration(envOr("DISCOVERY_INTERVAL", "30s")); err != nil || c.DiscoveryInterval <= 0 {
