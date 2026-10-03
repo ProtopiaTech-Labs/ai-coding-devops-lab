@@ -1,0 +1,11 @@
+# SQLite database. managed-csi (StandardSSD_LRS) is the cheapest disk class on the cluster.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: relay-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 1Gi

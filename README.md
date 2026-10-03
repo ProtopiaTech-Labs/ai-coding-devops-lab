@@ -145,3 +145,22 @@ scripts/discord-webhooks.sh --participants participants.txt --delete   # asks fo
 ```
 
 The channel's webhooks are listed once; missing `lab-<id>` ones are created, existing ones are reused, so a second run creates nothing. `--out` gets one line per participant, `<id> https://discord.com/api/webhooks/<id>/<token>` (mode 600). URLs are never printed to the terminal; treat the file as a secret (anyone with a URL can post to the channel). HTTP 429 is retried after `retry_after`; any other error stops the script with the Discord message. `--delete` removes `lab-<id>` for the listed ids.
+
+## Relay
+
+`relay/` is the lab relay (see `relay/README.md`). `.github/workflows/relay-build.yml` follows the rules of `build.yml` for paths `relay/**`: `go vet` and `go test`, then `ghcr.io/protopiatech-labs/relay:1.0.<run_number>` for `linux/amd64` and `linux/arm64`, immutable tags, no `latest`. The package must be public (`https://github.com/orgs/ProtopiaTech-Labs/packages/container/relay/settings`).
+
+`deploy/relay/` runs it in `lab-relay`: ServiceAccount `relay` with a read-only ClusterRole (namespaces, deployments, pods), PVC `relay-data` (1Gi, `managed-csi`) on `/data`, one replica with `Recreate`, `fsGroup: 65532`, read-only root filesystem, Service and Ingress `relay.lab.patoarchitekci.io` with a Let's Encrypt certificate.
+
+```sh
+scripts/deploy-relay.sh --version 1.0.<N> [--dry-run]
+scripts/github-webhook.sh
+```
+
+`deploy-relay.sh` writes ConfigMap `relay-participants` from `participants.txt` (repo root, not in git) and Secret `relay-admin` (`admin-key`, `webhook-secret`) from `RELAY_ADMIN_KEY` and `GITHUB_WEBHOOK_SECRET` in `.env`, applies `deploy/relay` with the tag and waits for the rollout. A checksum of that content is a pod template annotation, so a change restarts the pod and a rerun with the same input changes nothing. `github-webhook.sh` creates or updates the `deployment_status` hook of `GITHUB_REPO` pointing at `https://relay.lab.patoarchitekci.io/webhook/github` (JSON, the shared secret) and prints its id. Secrets go through files and stdin, never through arguments or the terminal.
+
+```sh
+curl https://relay.lab.patoarchitekci.io/healthz
+kubectl -n lab-relay get secret relay-admin -o jsonpath='{.data.admin-key}' | base64 -d   # admin key
+gh api repos/ProtopiaTech-Labs/ai-coding-devops-lab/hooks/<id>/deliveries --jq '.[] | {event, status_code}'
+```

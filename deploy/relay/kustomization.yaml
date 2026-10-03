@@ -1,0 +1,12 @@
+# The relay in lab-relay. scripts/deploy-relay.sh creates ConfigMap
+# relay-participants and Secret relay-admin and sets the image tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab-relay
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
