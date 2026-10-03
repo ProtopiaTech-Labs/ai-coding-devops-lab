@@ -95,3 +95,25 @@ gh workflow run deploy.yml -f namespace=<namespace> -f version=1.0.N -f break=no
 ```
 
 It logs in with the managed identity (OIDC, `azure/login`), gets the AKS kubeconfig and converts it with `kubelogin -l azurecli`, then runs `deploy.sh`. It builds no image. Runs for the same namespace queue (`concurrency: deploy-<namespace>`), they never cancel each other. With `break=none` the job waits for `kubectl rollout status` of `orders`, `inventory` and `payments` (90 s each) and fails if the shop does not become ready. With a breakage it does not wait: unhealthy pods are the expected result, so the job succeeds once `kubectl apply` succeeds. A namespace that `deploy.sh` refuses fails the job.
+
+## Chaos runner
+
+`scripts/chaos-runner.sh` runs on the instructor's machine (needs `kubectl` with kubelogin, `gh`, `curl` and `jq`). Every `--interval` seconds it picks a random registered namespace (`lab.protopia.tech/target=true`), a random existing version of `ghcr.io/protopiatech-labs/shop` and, with probability `--break-probability`, a random breakage (otherwise `none`), then runs the deploy workflow. It prints one line per iteration: time, namespace, version, break and the run URL.
+
+```sh
+scripts/chaos-runner.sh                                   # every 60 s, 30% breakages, until Ctrl+C
+scripts/chaos-runner.sh --iterations 5 --break-probability 1
+scripts/chaos-runner.sh --dry-run --seed 1 --namespaces p-test,p-test2
+nohup scripts/chaos-runner.sh > chaos.log 2>&1 &          # in the background; stop with kill
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--interval S` | `60` | seconds between deploys |
+| `--iterations N` | unlimited (5 with `--dry-run`) | stop after N iterations |
+| `--break-probability P` | `0.3` | chance of a breakage, 0..1 |
+| `--seed N` | none | seeds `RANDOM`, so the same inputs give the same choices |
+| `--namespaces a,b` | from `kubectl` | use these namespaces instead of the label |
+| `--dry-run` | off | print the choices only: no workflow run, no waiting |
+
+Versions come from the public registry API with an anonymous pull token (`https://ghcr.io/token`, then `/v2/protopiatech-labs/shop/tags/list`), because the GitHub packages API needs the `read:packages` scope. With no registered namespace, the runner prints a line and waits for the next interval; that iteration still counts. Dry-run lines carry the iteration number instead of the time, so two runs with the same seed print identical output.
