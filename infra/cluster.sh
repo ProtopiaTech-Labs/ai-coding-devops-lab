@@ -15,23 +15,15 @@ CERT_MANAGER_CHART_VERSION=v1.21.2
 log() { echo "==> $*"; }
 
 # $1 release (= namespace), $2 chart, $3 version, $4 values file (envsubst is applied)
-ensure_release() {
-  local values current_chart current_values
-  values=$(envsubst <"$4")
-  current_chart=$(helm list -n "$1" -f "^$1\$" --deployed -o json | jq -r '.[0].chart // empty')
-  current_values=$(helm get values "$1" -n "$1" -o json 2>/dev/null | jq -S . || true)
-  if [[ "$current_chart" == "$1-$3" && "$current_values" == "$(yq -o json <<<"$values" | jq -S .)" ]]; then
-    log "helm release $1 $3: unchanged"
-  else
-    log "helm release $1 $3: install or upgrade"
-    helm upgrade --install "$1" "$2" --version "$3" -n "$1" --create-namespace \
-      -f <(echo "$values") --wait --timeout 10m >/dev/null
-  fi
+install_release() {
+  log "helm release $1 $3"
+  helm upgrade --install "$1" "$2" --version "$3" -n "$1" --create-namespace \
+    -f <(envsubst <"$4") --wait --timeout 10m >/dev/null
 }
 
 helm repo add traefik https://traefik.github.io/charts --force-update >/dev/null
-ensure_release traefik traefik/traefik "$TRAEFIK_CHART_VERSION" "$ROOT/infra/values/traefik.yaml"
-ensure_release cert-manager oci://quay.io/jetstack/charts/cert-manager "$CERT_MANAGER_CHART_VERSION" \
+install_release traefik traefik/traefik "$TRAEFIK_CHART_VERSION" "$ROOT/infra/values/traefik.yaml"
+install_release cert-manager oci://quay.io/jetstack/charts/cert-manager "$CERT_MANAGER_CHART_VERSION" \
   "$ROOT/infra/values/cert-manager.yaml"
 
 log "ClusterIssuer letsencrypt: $(envsubst <"$ROOT/infra/manifests/cluster-issuer.yaml" | kubectl apply -f - | sed 's/.* //')"

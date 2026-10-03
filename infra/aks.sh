@@ -68,7 +68,7 @@ AKS_PRINCIPAL_ID=$(az aks show "${SUB[@]}" -g "$RESOURCE_GROUP" -n "$AKS_NAME" -
 # $@ az get-access-token arguments; prints the `oid` claim of the token
 token_oid() {
   az account get-access-token "$@" --query accessToken -o tsv \
-    | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq -r .oid
+    | jq -R -r 'split(".")[1] | gsub("-";"+") | gsub("_";"/") | @base64d | fromjson | .oid'
 }
 
 # The owner is the account that owns the subscription: the `oid` of an az token for the subscription.
@@ -102,6 +102,8 @@ fi
 ensure_gh_variable AZURE_CLIENT_ID "$MI_CLIENT_ID"
 ensure_gh_variable AZURE_TENANT_ID "$AZURE_TENANT_ID"
 ensure_gh_variable AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+ensure_gh_variable RESOURCE_GROUP "$RESOURCE_GROUP"
+ensure_gh_variable AKS_NAME "$AKS_NAME"
 
 # The subject comes from a real token: run the oidc-check workflow and copy its `sub` into .env.
 if [[ -z "${GHA_OIDC_SUBJECT:-}" ]]; then
