@@ -1,0 +1,44 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Lab relay</title>
+<script src="/static/app.js?v={{.Assets}}"></script>
+<link rel="stylesheet" href="/static/basecoat.cdn.min.css?v={{.Assets}}">
+<link rel="stylesheet" href="/static/app.css?v={{.Assets}}">
+<script src="/static/basecoat.all.min.js?v={{.Assets}}" defer></script>
+<script src="/static/htmx.min.js?v={{.Assets}}" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap row">
+    <strong>Lab relay</strong>
+    {{if .Admin}}<span class="badge" data-variant="outline">admin</span>
+    {{else if .Who.ID}}<span class="who">{{.Who.ID}} · {{.Who.Name}}</span>{{end}}
+    <nav class="row">
+    {{if .Admin}}
+      <a class="btn" data-size="sm" data-variant="{{if eq .Nav "admin"}}secondary{{else}}ghost{{end}}" href="/admin">Overview</a>
+      <a class="btn" data-size="sm" data-variant="{{if eq .Nav "admin-journal"}}secondary{{else}}ghost{{end}}" href="/admin/journal">Journal</a>
+      <a class="btn" data-size="sm" data-variant="{{if eq .Nav "admin-github"}}secondary{{else}}ghost{{end}}" href="/admin/github">GitHub</a>
+    {{else if .Nav}}
+      <a class="btn" data-size="sm" data-variant="{{if eq .Nav "namespaces"}}secondary{{else}}ghost{{end}}" href="/namespaces">Namespaces</a>
+      <a class="btn" data-size="sm" data-variant="{{if eq .Nav "webhook"}}secondary{{else}}ghost{{end}}" href="/webhook">Webhook</a>
+      <a class="btn" data-size="sm" data-variant="{{if eq .Nav "journal"}}secondary{{else}}ghost{{end}}" href="/journal">Journal</a>
+    {{end}}
+    </nav>
+    <span class="grow"></span>
+    <button type="button" class="btn" data-variant="ghost" data-size="sm" data-theme-toggle title="Toggle dark mode">Theme</button>
+    {{if or .Admin .Who.ID}}
+    <form method="post" action="/logout"><button type="submit" class="btn" data-variant="outline" data-size="sm">Log out</button></form>
+    {{end}}
+  </div>
+</header>
+<main class="wrap stack">
+{{template "content" .}}
+</main>
+<footer class="wrap muted small">relay {{.Version}}</footer>
+<div id="toaster" class="toaster"></div>
+</body>
+</html>
+{{end}}

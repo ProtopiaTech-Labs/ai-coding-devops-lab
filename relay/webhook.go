@@ -289,20 +289,29 @@ func (s *server) deliver(ctx context.Context, pid, ns, kind, event, gd string, h
 
 // handleTest sends a signed ping-style event to the caller's URL and returns the result.
 func (s *server) handleTest(w http.ResponseWriter, r *http.Request, p participant) {
-	target, err := s.webhookURL(r.Context(), p.ID)
+	d, err := s.sendTest(r.Context(), p.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
+		writeStoreError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+// sendTest sends a signed ping to the participant's URL and returns the
+// stored delivery; no URL is an inputError.
+func (s *server) sendTest(ctx context.Context, pid string) (delivery, error) {
+	target, err := s.webhookURL(ctx, pid)
+	if err != nil {
+		return delivery{}, err
+	}
 	if target == "" {
-		writeError(w, http.StatusBadRequest, "set a webhook URL first")
-		return
+		return delivery{}, inputError{"set a webhook URL first"}
 	}
 	body, _ := json.Marshal(map[string]any{
 		"zen":         "Lab relay test event.",
 		"hook_id":     0,
 		"relay_test":  true,
-		"participant": p.ID,
+		"participant": pid,
 		"sent_at":     ts(s.now()),
 	})
 	gd := newUUID()
@@ -315,7 +324,7 @@ func (s *server) handleTest(w http.ResponseWriter, r *http.Request, p participan
 		"X-Hub-Signature":     signSHA1(s.cfg.WebhookSecret, body),
 		"User-Agent":          "GitHub-Hookshot/lab-relay-test",
 	}
-	writeJSON(w, http.StatusOK, s.deliver(r.Context(), p.ID, "", "test", "ping", gd, headers, body, target))
+	return s.deliver(ctx, pid, "", "test", "ping", gd, headers, body, target), nil
 }
 
 // handleReplay resends the last N GitHub deliveries of the caller (oldest
@@ -324,26 +333,37 @@ func (s *server) handleReplay(w http.ResponseWriter, r *http.Request, p particip
 	n := 1
 	if v := r.URL.Query().Get("last"); v != "" {
 		var err error
-		if n, err = strconv.Atoi(v); err != nil || n < 1 || n > 20 {
+		if n, err = strconv.Atoi(v); err != nil {
 			writeError(w, http.StatusBadRequest, "last must be 1..20")
 			return
 		}
 	}
-	target, err := s.webhookURL(r.Context(), p.ID)
+	queued, err := s.replay(r.Context(), p.ID, n)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
+		writeStoreError(w, err)
 		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]int{"queued": queued})
+}
+
+// replay queues the participant's last n (1..20) GitHub deliveries for
+// resending and returns how many were queued.
+func (s *server) replay(ctx context.Context, pid string, n int) (int, error) {
+	if n < 1 || n > 20 {
+		return 0, inputError{"last must be 1..20"}
+	}
+	target, err := s.webhookURL(ctx, pid)
+	if err != nil {
+		return 0, err
 	}
 	if target == "" {
-		writeError(w, http.StatusBadRequest, "set a webhook URL first")
-		return
+		return 0, inputError{"set a webhook URL first"}
 	}
-	rows, err := s.db.QueryContext(r.Context(), `SELECT COALESCE(namespace, ''), COALESCE(event, ''),
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(namespace, ''), COALESCE(event, ''),
 		COALESCE(github_delivery, ''), headers, body FROM deliveries
-		WHERE participant_id = ? AND kind = 'github' ORDER BY id DESC LIMIT ?`, p.ID, n)
+		WHERE participant_id = ? AND kind = 'github' ORDER BY id DESC LIMIT ?`, pid, n)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
+		return 0, err
 	}
 	type orig struct {
 		ns, event, gd string
@@ -356,8 +376,7 @@ func (s *server) handleReplay(w http.ResponseWriter, r *http.Request, p particip
 		var hj string
 		if err := rows.Scan(&o.ns, &o.event, &o.gd, &hj, &o.body); err != nil {
 			rows.Close()
-			writeError(w, http.StatusInternalServerError, "database error")
-			return
+			return 0, err
 		}
 		_ = json.Unmarshal([]byte(hj), &o.headers)
 		list = append(list, o)
@@ -366,10 +385,10 @@ func (s *server) handleReplay(w http.ResponseWriter, r *http.Request, p particip
 	s.async(func() {
 		for i := len(list) - 1; i >= 0; i-- {
 			o := list[i]
-			s.deliver(context.Background(), p.ID, o.ns, "replay", o.event, o.gd, o.headers, o.body, target)
+			s.deliver(context.Background(), pid, o.ns, "replay", o.event, o.gd, o.headers, o.body, target)
 		}
 	})
-	writeJSON(w, http.StatusAccepted, map[string]int{"queued": len(list)})
+	return len(list), nil
 }
 
 // recordEvent stores one received GitHub request for the admin view and
@@ -383,6 +402,39 @@ func (s *server) recordEvent(event, gd, ns, pid, outcome, detail string) {
 		return
 	}
 	_, _ = s.db.Exec(`DELETE FROM github_events WHERE id <= (SELECT MAX(id) FROM github_events) - 1000`)
+}
+
+// githubEvent is one row of github_events.
+type githubEvent struct {
+	ID             int64
+	Event          string
+	GitHubDelivery string
+	Namespace      string
+	Participant    string
+	Outcome        string
+	Detail         string
+	CreatedAt      string
+}
+
+// githubEvents returns the newest received GitHub requests, newest first.
+func (s *server) githubEvents(ctx context.Context, limit int) ([]githubEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(event, ''), COALESCE(github_delivery, ''),
+		COALESCE(namespace, ''), COALESCE(participant_id, ''), outcome, COALESCE(detail, ''), created_at
+		FROM github_events ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []githubEvent
+	for rows.Next() {
+		var e githubEvent
+		if err := rows.Scan(&e.ID, &e.Event, &e.GitHubDelivery, &e.Namespace, &e.Participant,
+			&e.Outcome, &e.Detail, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 func (s *server) webhookURL(ctx context.Context, pid string) (string, error) {

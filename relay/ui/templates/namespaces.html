@@ -1,0 +1,9 @@
+{{define "content"}}
+<div class="card">
+  <header>
+    <h2>Namespaces</h2>
+    <p>Namespaces with the label <code>lab.protopia.tech/target=true</code> and your prefix. Cluster state is refreshed every 15 s.</p>
+  </header>
+  <section>{{template "namespaces-table" .}}</section>
+</div>
+{{end}}

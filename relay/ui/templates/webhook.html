@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="card">
+  <header>
+    <h2>Webhook</h2>
+    <p>The relay forwards GitHub events signed with this shared secret.</p>
+  </header>
+  <section class="stack">
+    <div class="field">
+      <label for="secret">Shared secret</label>
+      <div class="row">
+        <input class="input grow mono" id="secret" type="password" readonly value="{{.Secret}}">
+        <button type="button" class="btn" data-variant="outline" data-reveal="secret">Show</button>
+        <button type="button" class="btn" data-variant="outline" data-copy="secret">Copy</button>
+      </div>
+    </div>
+    {{template "url-form" .}}
+    <div class="row">
+      <form hx-post="/webhook/test" hx-target="#action-result">
+        <button type="submit" class="btn" data-variant="secondary">Send test event</button>
+      </form>
+      <form class="row" hx-post="/webhook/replay" hx-target="#action-result">
+        <label for="last" class="small">Replay last</label>
+        <select class="select" id="last" name="last">
+          <option>1</option><option>5</option><option>10</option><option>20</option>
+        </select>
+        <button type="submit" class="btn" data-variant="secondary">Replay</button>
+      </form>
+    </div>
+    <div id="action-result"></div>
+  </section>
+</div>
+<div class="card">
+  <header>
+    <h2>Delivery log</h2>
+    <p>Newest 50, refreshed every 5 s.</p>
+  </header>
+  <section>
+    <div id="deliveries" hx-get="/webhook/deliveries" hx-trigger="every 5s" hx-swap="innerHTML">{{template "deliveries" .}}</div>
+  </section>
+</div>
+{{end}}

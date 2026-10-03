@@ -1,0 +1,18 @@
+{{define "content"}}
+<div class="card narrow">
+  <header>
+    <h2>Log in</h2>
+    <p>Use the API key from your card.</p>
+  </header>
+  <section>
+    <form method="post" action="/login" class="stack-sm">
+      <div class="field"{{if .Error}} data-invalid="true"{{end}}>
+        <label for="key">API key</label>
+        <input class="input" id="key" name="key" type="password" autocomplete="current-password" required autofocus{{if .Error}} aria-invalid="true"{{end}}>
+        {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+      </div>
+      <button type="submit" class="btn">Log in</button>
+    </form>
+  </section>
+</div>
+{{end}}

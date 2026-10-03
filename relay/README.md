@@ -1,6 +1,6 @@
 # relay
 
-Lab relay (plan 002): config, SQLite schema, namespace discovery, the GitHub webhook, the JSON API, `GET /healthz`. The UI comes later (`ui/`).
+Lab relay (plan 002): config, SQLite schema, namespace discovery, the GitHub webhook, the JSON API, the web UI, `GET /healthz`.
 
 ## Config
 
@@ -48,6 +48,16 @@ The image runs as 65532 from `scratch`. A volume mounted on `/data` needs `secur
 | `GET /api/participants` | admin | id, name, connected namespaces, webhook URL, last delivery, last journal entry time |
 | `POST /api/journal` | admin | `{namespace, type: deploy\|drift, message, command, undo, status: open\|fixed}`; status defaults to `open`; the owner comes from the namespace prefix |
 | `PATCH /api/journal/{id}` | admin | `{status, message}` |
+
+## UI
+
+`ui/templates` (`html/template`) and `ui/static` (Basecoat 1.0.2 `basecoat.cdn.min.css` and `js/all.min.js` saved as `basecoat.all.min.js`, htmx 4.0.0 `htmx.min.js`, from jsDelivr; `app.css`, `app.js`) are embedded with `go:embed`.
+
+- Login at `/login` with an API key. The key goes into cookie `relay_key` (HttpOnly, SameSite=Strict, 12 h; Secure unless `RELAY_ALLOW_PRIVATE_TARGETS=true`). `POST /logout` clears it.
+- Participant: `/namespaces` (connected state, shop version = image tag of Deployment `orders`, pod readiness; cluster reads cached 15 s), `/webhook` (shared secret, URL, test event, replay, delivery log polled every 5 s), `/journal`.
+- Admin: `/admin` (overview), `/admin/participants/{id}`, `/admin/journal?participant=&type=&status=`, `/admin/github` (`github_events`). A participant session on an admin page gets 403; the admin session on a participant page is sent to `/admin`.
+- POSTs go through `http.CrossOriginProtection` (Sec-Fetch-Site / Origin must be same-origin) on top of the SameSite=Strict cookie. Pages send a CSP without inline scripts.
+- The relay needs read on `deployments` and `pods` in the target namespaces for the version and pod columns; without it the row shows "cluster read failed".
 
 ## Local run against the cluster
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
@@ -59,7 +60,12 @@ func (s *server) routes(mux *http.ServeMux) {
 // caller resolves X-Api-Key. Every key is compared in constant time, and the
 // loop does not stop at a match.
 func (s *server) caller(r *http.Request) (p participant, admin, ok bool) {
-	key := []byte(r.Header.Get("X-Api-Key"))
+	return s.callerKey(r.Header.Get("X-Api-Key"))
+}
+
+// callerKey resolves an API key (header or UI session cookie).
+func (s *server) callerKey(k string) (p participant, admin, ok bool) {
+	key := []byte(k)
 	if len(key) == 0 {
 		return participant{}, false, false
 	}
@@ -136,33 +142,64 @@ type namespaceRow struct {
 }
 
 func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request, p participant) {
-	rows, err := s.db.QueryContext(r.Context(), `SELECT name, participant_id, connected, first_seen, last_seen,
-		COALESCE(disconnected_at, '') FROM namespaces WHERE participant_id = ? ORDER BY name`, p.ID)
+	out, err := s.listNamespaces(r.Context(), p.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// listNamespaces returns the namespaces of a participant, connected or not.
+func (s *server) listNamespaces(ctx context.Context, pid string) ([]namespaceRow, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name, participant_id, connected, first_seen, last_seen,
+		COALESCE(disconnected_at, '') FROM namespaces WHERE participant_id = ? ORDER BY name`, pid)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	out := []namespaceRow{}
 	for rows.Next() {
 		var n namespaceRow
 		if err := rows.Scan(&n.Name, &n.Participant, &n.Connected, &n.FirstSeen, &n.LastSeen, &n.DisconnectedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "database error")
-			return
+			return nil, err
 		}
 		out = append(out, n)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, rows.Err()
 }
 
 func (s *server) handleWebhookGet(w http.ResponseWriter, r *http.Request, p participant) {
-	var u, updated string
-	err := s.db.QueryRowContext(r.Context(), `SELECT url, updated_at FROM webhook_urls WHERE participant_id = ?`, p.ID).Scan(&u, &updated)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	u, updated, err := s.webhookSetting(r.Context(), p.ID)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"url": u, "updated_at": updated, "secret": s.cfg.WebhookSecret})
+}
+
+// webhookSetting returns the participant's URL and when it was set ("" when unset).
+func (s *server) webhookSetting(ctx context.Context, pid string) (u, updated string, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT url, updated_at FROM webhook_urls WHERE participant_id = ?`, pid).Scan(&u, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return u, updated, err
+}
+
+// inputError is a problem with what the caller sent (400), not a server error.
+type inputError struct{ msg string }
+
+func (e inputError) Error() string { return e.msg }
+
+// writeStoreError maps an inputError to 400 and anything else to 500.
+func writeStoreError(w http.ResponseWriter, err error) {
+	var ie inputError
+	if errors.As(err, &ie) {
+		writeError(w, http.StatusBadRequest, ie.msg)
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "database error")
 }
 
 // handleWebhookPut sets the URL from {"url": "..."}; an empty url removes it.
@@ -174,34 +211,42 @@ func (s *server) handleWebhookPut(w http.ResponseWriter, r *http.Request, p part
 		writeError(w, http.StatusBadRequest, `want JSON {"url": "https://..."}`)
 		return
 	}
-	in.URL = strings.TrimSpace(in.URL)
-	if in.URL == "" {
-		if _, err := s.db.ExecContext(r.Context(), `DELETE FROM webhook_urls WHERE participant_id = ?`, p.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, "database error")
-			return
-		}
+	u, t, err := s.setWebhookURL(r.Context(), p.ID, in.URL)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if u == "" {
 		writeJSON(w, http.StatusOK, map[string]string{"url": ""})
 		return
 	}
-	if len(in.URL) > 2048 {
-		writeError(w, http.StatusBadRequest, "URL too long")
-		return
+	writeJSON(w, http.StatusOK, map[string]string{"url": u, "updated_at": t})
+}
+
+// setWebhookURL validates and stores a participant URL; "" removes it.
+// It returns the stored URL and time; a rejected URL is an inputError.
+func (s *server) setWebhookURL(ctx context.Context, pid, raw string) (u, updated string, err error) {
+	u = strings.TrimSpace(raw)
+	if u == "" {
+		_, err = s.db.ExecContext(ctx, `DELETE FROM webhook_urls WHERE participant_id = ?`, pid)
+		return "", "", err
 	}
-	if err := validWebhookURL(in.URL, s.cfg.AllowPrivateTargets); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	if len(u) > 2048 {
+		return "", "", inputError{"URL too long"}
+	}
+	if err := validWebhookURL(u, s.cfg.AllowPrivateTargets); err != nil {
+		return "", "", inputError{err.Error()}
 	}
 	t := ts(s.now())
-	if _, err := s.db.ExecContext(r.Context(), `INSERT INTO webhook_urls (participant_id, url, updated_at) VALUES (?, ?, ?)
-		ON CONFLICT(participant_id) DO UPDATE SET url = excluded.url, updated_at = excluded.updated_at`, p.ID, in.URL, t); err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO webhook_urls (participant_id, url, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(participant_id) DO UPDATE SET url = excluded.url, updated_at = excluded.updated_at`, pid, u, t); err != nil {
+		return "", "", err
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"url": in.URL, "updated_at": t})
+	return u, t, nil
 }
 
 func (s *server) handleDeliveries(w http.ResponseWriter, r *http.Request, p participant) {
-	out, err := s.deliveries(r, p.ID, 50)
+	out, err := s.deliveries(r.Context(), p.ID, 50)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -210,8 +255,8 @@ func (s *server) handleDeliveries(w http.ResponseWriter, r *http.Request, p part
 }
 
 // deliveries returns the newest deliveries of a participant, newest first.
-func (s *server) deliveries(r *http.Request, pid string, limit int) ([]delivery, error) {
-	rows, err := s.db.QueryContext(r.Context(), `SELECT id, participant_id, COALESCE(namespace, ''), kind,
+func (s *server) deliveries(ctx context.Context, pid string, limit int) ([]delivery, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, participant_id, COALESCE(namespace, ''), kind,
 		COALESCE(event, ''), COALESCE(github_delivery, ''), url, COALESCE(status_code, 0), COALESCE(error, ''),
 		COALESCE(duration_ms, 0), created_at FROM deliveries WHERE participant_id = ? ORDER BY id DESC LIMIT ?`, pid, limit)
 	if err != nil {
@@ -273,35 +318,61 @@ func (s *server) handleJournalList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "participant filter is admin only")
 		return
 	}
-	where, args := []string{"1=1"}, []any{}
-	if pid != "" {
-		where, args = append(where, "participant_id = ?"), append(args, pid)
-	}
+	f := journalFilter{Participant: pid}
 	if v := q.Get("since"); v != "" {
 		t, err := time.Parse(time.RFC3339, v)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "since must be RFC 3339")
 			return
 		}
-		where, args = append(where, "updated_at >= ?"), append(args, ts(t))
+		f.Since = t
 	}
-	rows, err := s.db.QueryContext(r.Context(), `SELECT `+journalCols+` FROM journal WHERE `+
-		strings.Join(where, " AND ")+` ORDER BY id DESC LIMIT 500`, args...)
+	out, err := s.listJournal(r.Context(), f, 500)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// journalFilter narrows listJournal; zero fields match everything.
+type journalFilter struct {
+	Participant string
+	Since       time.Time // updated_at >= Since
+	Type        string    // deploy, drift
+	Status      string
+}
+
+// listJournal returns matching entries, newest first.
+func (s *server) listJournal(ctx context.Context, f journalFilter, limit int) ([]journalEntry, error) {
+	where, args := []string{"1=1"}, []any{}
+	if f.Participant != "" {
+		where, args = append(where, "participant_id = ?"), append(args, f.Participant)
+	}
+	if !f.Since.IsZero() {
+		where, args = append(where, "updated_at >= ?"), append(args, ts(f.Since))
+	}
+	if f.Type != "" {
+		where, args = append(where, "type = ?"), append(args, f.Type)
+	}
+	if f.Status != "" {
+		where, args = append(where, "status = ?"), append(args, f.Status)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+journalCols+` FROM journal WHERE `+
+		strings.Join(where, " AND ")+` ORDER BY id DESC LIMIT ?`, append(args, limit)...)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	out := []journalEntry{}
 	for rows.Next() {
 		e, err := scanJournal(rows)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "database error")
-			return
+			return nil, err
 		}
 		out = append(out, e)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, rows.Err()
 }
 
 func (s *server) handleJournalCreate(w http.ResponseWriter, r *http.Request) {
@@ -405,44 +476,50 @@ type participantRow struct {
 }
 
 func (s *server) handleParticipants(w http.ResponseWriter, r *http.Request) {
+	out, err := s.participantsOverview(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// participantsOverview returns one row per configured participant.
+func (s *server) participantsOverview(ctx context.Context) ([]participantRow, error) {
 	out := make([]participantRow, 0, len(s.cfg.Participants))
 	for _, p := range s.cfg.Participants {
 		row := participantRow{ID: p.ID, Name: p.Name, Namespaces: []string{}}
-		err := func() error {
-			rows, err := s.db.QueryContext(r.Context(), `SELECT name FROM namespaces
-				WHERE participant_id = ? AND connected = 1 ORDER BY name`, p.ID)
-			if err != nil {
-				return err
-			}
-			for rows.Next() {
-				var n string
-				if err := rows.Scan(&n); err != nil {
-					rows.Close()
-					return err
-				}
-				row.Namespaces = append(row.Namespaces, n)
-			}
-			rows.Close()
-			if row.WebhookURL, err = s.webhookURL(r.Context(), p.ID); err != nil {
-				return err
-			}
-			ds, err := s.deliveries(r, p.ID, 1)
-			if err != nil {
-				return err
-			}
-			if len(ds) == 1 {
-				row.LastDelivery = &ds[0]
-			}
-			return s.db.QueryRowContext(r.Context(), `SELECT COALESCE(MAX(created_at), '') FROM journal
-				WHERE participant_id = ?`, p.ID).Scan(&row.LastJournalAt)
-		}()
+		rows, err := s.db.QueryContext(ctx, `SELECT name FROM namespaces
+			WHERE participant_id = ? AND connected = 1 ORDER BY name`, p.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "database error")
-			return
+			return nil, err
+		}
+		for rows.Next() {
+			var n string
+			if err := rows.Scan(&n); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			row.Namespaces = append(row.Namespaces, n)
+		}
+		rows.Close()
+		if row.WebhookURL, err = s.webhookURL(ctx, p.ID); err != nil {
+			return nil, err
+		}
+		ds, err := s.deliveries(ctx, p.ID, 1)
+		if err != nil {
+			return nil, err
+		}
+		if len(ds) == 1 {
+			row.LastDelivery = &ds[0]
+		}
+		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(created_at), '') FROM journal
+			WHERE participant_id = ?`, p.ID).Scan(&row.LastJournalAt); err != nil {
+			return nil, err
 		}
 		out = append(out, row)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

@@ -1,0 +1,32 @@
+{{define "content"}}
+<div class="card">
+  <header>
+    <h2>Journal</h2>
+    <p>All entries, newest first (max 500).</p>
+  </header>
+  <section class="stack">
+    <form method="get" action="/admin/journal" class="row">
+      <select class="select" name="participant" aria-label="Participant">
+        <option value="">All participants</option>
+        {{range .IDs}}<option value="{{.ID}}"{{if eq .ID $.Filter.Participant}} selected{{end}}>{{.ID}} · {{.Name}}</option>{{end}}
+      </select>
+      <select class="select" name="type" aria-label="Type">
+        <option value="">All types</option>
+        <option value="deploy"{{if eq .Filter.Type "deploy"}} selected{{end}}>deploy</option>
+        <option value="drift"{{if eq .Filter.Type "drift"}} selected{{end}}>drift</option>
+      </select>
+      <select class="select" name="status" aria-label="Status">
+        <option value="">All statuses</option>
+        <option value="open"{{if eq .Filter.Status "open"}} selected{{end}}>open</option>
+        <option value="fixed"{{if eq .Filter.Status "fixed"}} selected{{end}}>fixed</option>
+        <option value="success"{{if eq .Filter.Status "success"}} selected{{end}}>success</option>
+        <option value="failure"{{if eq .Filter.Status "failure"}} selected{{end}}>failure</option>
+        <option value="error"{{if eq .Filter.Status "error"}} selected{{end}}>error</option>
+      </select>
+      <button type="submit" class="btn">Filter</button>
+      <a class="btn" data-variant="ghost" href="/admin/journal">Clear</a>
+    </form>
+    {{template "journal-table" .}}
+  </section>
+</div>
+{{end}}

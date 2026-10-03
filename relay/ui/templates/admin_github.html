@@ -1,0 +1,30 @@
+{{define "content"}}
+<div class="card">
+  <header>
+    <h2>GitHub webhook</h2>
+    <p>Newest 200 requests to <code>/webhook/github</code>. HMAC errors are red.</p>
+  </header>
+  <section>
+  <div class="table-container">
+  <table class="table">
+    <thead><tr><th>Time (UTC)</th><th>Event</th><th>Delivery id</th><th>Namespace</th><th>Participant</th><th>Outcome</th><th>Detail</th></tr></thead>
+    <tbody>
+    {{range .Events}}
+      <tr{{if eq .Outcome "bad_signature"}} class="row-error"{{end}}>
+        <td class="mono nowrap">{{clock .CreatedAt}}</td>
+        <td>{{.Event}}</td>
+        <td class="mono small">{{.GitHubDelivery}}</td>
+        <td class="mono">{{.Namespace}}</td>
+        <td>{{.Participant}}</td>
+        <td><span class="badge" data-variant="{{if eq .Outcome "bad_signature" "bad_request"}}destructive{{else if eq .Outcome "forwarded"}}primary{{else}}secondary{{end}}">{{.Outcome}}</span></td>
+        <td class="small">{{.Detail}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="7" class="muted">Nothing received yet.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  </section>
+</div>
+{{end}}

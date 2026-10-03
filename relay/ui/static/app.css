@@ -1,0 +1,26 @@
+/* Layout only; components come from Basecoat. */
+body { background: var(--background); color: var(--foreground); min-height: 100vh; }
+.wrap { max-width: 72rem; margin: 0 auto; padding: 0 1rem; }
+.topbar { border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
+.topbar .wrap { padding-top: .75rem; padding-bottom: .75rem; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.grow { flex: 1 1 auto; }
+.row > .input.grow { width: auto; flex: 1 1 14rem; min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: 1.5rem; }
+.stack-sm { display: flex; flex-direction: column; gap: .75rem; }
+.narrow { max-width: 24rem; margin: 3rem auto; width: 100%; }
+.who { font-weight: 500; }
+.muted { color: var(--muted-foreground); }
+.small { font-size: .8125rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.nowrap { white-space: nowrap; }
+.err { color: var(--destructive); }
+.ok { color: var(--foreground); }
+.link { text-decoration: underline; text-underline-offset: 3px; }
+.url { word-break: break-all; max-width: 20rem; }
+.msg { max-width: 24rem; }
+.h1 { font-size: 1.25rem; font-weight: 600; }
+.row-error td { background: color-mix(in oklab, var(--destructive) 12%, transparent); }
+footer.wrap { padding-top: 2rem; padding-bottom: 2rem; }
+.tabs [role=tabpanel] { margin-top: 1rem; }
+.msg .mono { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -45,6 +45,12 @@ func main() {
 	})
 	api := newServer(cfg, db, log)
 	api.routes(mux)
+	web, err := newUI(api, newWorkloadCache(kube.workload, 15*time.Second).get)
+	if err != nil {
+		log.Error("ui templates", "err", err)
+		os.Exit(1)
+	}
+	web.routes(mux)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           mux,

@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,9 +25,10 @@ const (
 	targetLabel = "lab.protopia.tech/target=true"
 )
 
-// kubeClient lists the target namespaces.
+// kubeClient reads the Kubernetes API: the target namespaces, and for the
+// namespace screen the shop Deployment and the pods.
 type kubeClient struct {
-	url    string
+	base   string // API server URL without a trailing slash
 	client *http.Client
 	token  func() (string, error)
 }
@@ -34,11 +37,10 @@ type kubeClient struct {
 // KUBE_API=http://127.0.0.1:8001 with `kubectl proxy`; otherwise the
 // in-cluster ServiceAccount.
 func newKubeClient() (*kubeClient, error) {
-	query := "/api/v1/namespaces?labelSelector=" + url.QueryEscape(targetLabel)
 	if api := os.Getenv("KUBE_API"); api != "" {
 		token := os.Getenv("KUBE_TOKEN")
 		return &kubeClient{
-			url:    strings.TrimSuffix(api, "/") + query,
+			base:   strings.TrimSuffix(api, "/"),
 			client: &http.Client{Timeout: 10 * time.Second},
 			token:  func() (string, error) { return token, nil },
 		}, nil
@@ -57,7 +59,7 @@ func newKubeClient() (*kubeClient, error) {
 		return nil, fmt.Errorf("no certificates in %s/ca.crt", saDir)
 	}
 	return &kubeClient{
-		url: "https://" + net.JoinHostPort(host, port) + query,
+		base: "https://" + net.JoinHostPort(host, port),
 		client: &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}},
@@ -72,11 +74,20 @@ func newKubeClient() (*kubeClient, error) {
 
 // namespaces returns the names of the labelled namespaces.
 func (k *kubeClient) namespaces(ctx context.Context) ([]string, error) {
+	body, err := k.get(ctx, "/api/v1/namespaces?labelSelector="+url.QueryEscape(targetLabel))
+	if err != nil {
+		return nil, fmt.Errorf("list namespaces: %w", err)
+	}
+	return parseNamespaceList(body)
+}
+
+// get GETs path on the API server and returns the body of a 200 response.
+func (k *kubeClient) get(ctx context.Context, path string) ([]byte, error) {
 	token, err := k.token()
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, k.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, k.base+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +105,17 @@ func (k *kubeClient) namespaces(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("list namespaces: status %d: %.200s", resp.StatusCode, body)
+		return nil, &apiStatusError{resp.StatusCode, fmt.Sprintf("%.200s", body)}
 	}
-	return parseNamespaceList(body)
+	return body, nil
 }
+
+type apiStatusError struct {
+	code int
+	body string
+}
+
+func (e *apiStatusError) Error() string { return fmt.Sprintf("status %d: %s", e.code, e.body) }
 
 // parseNamespaceList returns the names in a Kubernetes NamespaceList.
 func parseNamespaceList(body []byte) ([]string, error) {
@@ -254,4 +272,150 @@ func (d *discovery) run(ctx context.Context, k *kubeClient, every time.Duration)
 		case <-tick.C:
 		}
 	}
+}
+
+// shopDeployment is the Deployment whose image tag is the shop version shown
+// on the namespace screen.
+const shopDeployment = "orders"
+
+// workload is what the namespace screen shows from the cluster.
+type workload struct {
+	Version string // image tag of the shop Deployment; "" when it does not exist
+	Ready   int    // pods with condition Ready
+	Total   int    // pods that are not Succeeded or Failed
+	Problem string // first waiting or terminated reason of a pod that is not ready
+	Err     string // the read failed
+}
+
+// workload reads the shop Deployment's image tag and the pod readiness of ns.
+func (k *kubeClient) workload(ctx context.Context, ns string) workload {
+	var w workload
+	esc := url.PathEscape(ns)
+	body, err := k.get(ctx, "/apis/apps/v1/namespaces/"+esc+"/deployments/"+shopDeployment)
+	var se *apiStatusError
+	switch {
+	case errors.As(err, &se) && se.code == http.StatusNotFound:
+	case err != nil:
+		w.Err = "read deployment: " + err.Error()
+		return w
+	default:
+		w.Version = parseDeploymentVersion(body)
+	}
+	if body, err = k.get(ctx, "/api/v1/namespaces/"+esc+"/pods"); err != nil {
+		w.Err = "list pods: " + err.Error()
+		return w
+	}
+	w.Ready, w.Total, w.Problem = parsePodList(body)
+	return w
+}
+
+// parseDeploymentVersion returns the tag of the first container image.
+func parseDeploymentVersion(body []byte) string {
+	var d struct {
+		Spec struct {
+			Template struct {
+				Spec struct {
+					Containers []struct {
+						Image string `json:"image"`
+					} `json:"containers"`
+				} `json:"spec"`
+			} `json:"template"`
+		} `json:"spec"`
+	}
+	if json.Unmarshal(body, &d) != nil || len(d.Spec.Template.Spec.Containers) == 0 {
+		return ""
+	}
+	img := d.Spec.Template.Spec.Containers[0].Image
+	img, _, _ = strings.Cut(img, "@")
+	if i := strings.LastIndex(img, ":"); i > strings.LastIndex(img, "/") {
+		return img[i+1:]
+	}
+	return "latest"
+}
+
+// parsePodList counts ready pods among the running ones and returns the first
+// reason a pod is not ready (CrashLoopBackOff, ImagePullBackOff, Pending, ...).
+func parsePodList(body []byte) (ready, total int, problem string) {
+	var list struct {
+		Items []struct {
+			Status struct {
+				Phase      string `json:"phase"`
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+				ContainerStatuses []struct {
+					State map[string]struct {
+						Reason string `json:"reason"`
+					} `json:"state"`
+				} `json:"containerStatuses"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+	if json.Unmarshal(body, &list) != nil {
+		return 0, 0, "unreadable pod list"
+	}
+	for _, p := range list.Items {
+		if p.Status.Phase == "Succeeded" || p.Status.Phase == "Failed" {
+			continue
+		}
+		total++
+		isReady := false
+		for _, c := range p.Status.Conditions {
+			if c.Type == "Ready" && c.Status == "True" {
+				isReady = true
+			}
+		}
+		if isReady {
+			ready++
+			continue
+		}
+		if problem != "" {
+			continue
+		}
+		for _, cs := range p.Status.ContainerStatuses {
+			for _, st := range []string{"waiting", "terminated"} {
+				if r := cs.State[st].Reason; r != "" && problem == "" {
+					problem = r
+				}
+			}
+		}
+		if problem == "" {
+			problem = p.Status.Phase
+		}
+	}
+	return ready, total, problem
+}
+
+// workloadCache keeps workload reads for ttl, so page loads and polls do not
+// hit the API server every time.
+type workloadCache struct {
+	read func(ctx context.Context, ns string) workload
+	ttl  time.Duration
+	now  func() time.Time
+	mu   sync.Mutex
+	m    map[string]cachedWorkload
+}
+
+type cachedWorkload struct {
+	at time.Time
+	w  workload
+}
+
+func newWorkloadCache(read func(context.Context, string) workload, ttl time.Duration) *workloadCache {
+	return &workloadCache{read: read, ttl: ttl, now: time.Now, m: map[string]cachedWorkload{}}
+}
+
+func (c *workloadCache) get(ctx context.Context, ns string) workload {
+	c.mu.Lock()
+	e, ok := c.m[ns]
+	c.mu.Unlock()
+	if ok && c.now().Sub(e.at) < c.ttl {
+		return e.w
+	}
+	w := c.read(ctx, ns)
+	c.mu.Lock()
+	c.m[ns] = cachedWorkload{c.now(), w}
+	c.mu.Unlock()
+	return w
 }

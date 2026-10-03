@@ -1,0 +1,96 @@
+{{define "namespaces-table"}}
+<div class="table-container">
+<table class="table">
+  <thead><tr><th>Namespace</th><th>State</th><th>Version</th><th>Pods</th><th>Link</th></tr></thead>
+  <tbody>
+  {{range .Namespaces}}
+    <tr>
+      <td class="mono">{{.Name}}</td>
+      <td>{{if .Connected}}<span class="badge" data-variant="primary">connected</span>{{else}}<span class="badge" data-variant="outline" title="since {{clock .DisconnectedAt}} UTC">disconnected</span>{{end}}</td>
+      {{if not .Connected}}<td class="muted">–</td><td class="muted">–</td>
+      {{else if .Err}}<td colspan="2"><span class="badge" data-variant="destructive">cluster read failed</span> <span class="muted small">{{.Err}}</span></td>
+      {{else}}
+      <td class="mono">{{if .Version}}{{.Version}}{{else}}<span class="muted">no orders deployment</span>{{end}}</td>
+      <td>{{if .Total}}<span class="badge" data-variant="{{if eq .Ready .Total}}primary{{else}}destructive{{end}}">{{.Ready}}/{{.Total}} ready</span>{{else}}<span class="muted">no pods</span>{{end}}
+        {{with .Problem}}<span class="badge" data-variant="destructive">{{.}}</span>{{end}}</td>
+      {{end}}
+      <td><a class="link" href="https://{{.Name}}.{{$.Domain}}/version" target="_blank" rel="noopener">/version</a></td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5" class="muted">No namespaces yet. Label one with <code>lab.protopia.tech/target=true</code>.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{define "deliveries"}}
+<div class="table-container">
+<table class="table">
+  <thead><tr><th>Time (UTC)</th><th>Kind</th><th>Event</th><th>Delivery id</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead>
+  <tbody>
+  {{range .Deliveries}}
+    <tr>
+      <td class="mono nowrap">{{clock .CreatedAt}}</td>
+      <td>{{.Kind}}</td>
+      <td>{{.Event}}</td>
+      <td class="mono small">{{.GitHubDelivery}}</td>
+      <td>{{if .StatusCode}}<span class="badge" data-variant="{{codeVariant .StatusCode}}">{{.StatusCode}}</span>{{else}}<span class="badge" data-variant="destructive">no response</span>{{end}}</td>
+      <td class="nowrap">{{.DurationMS}} ms</td>
+      <td class="small err">{{.Error}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="7" class="muted">No deliveries yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{define "journal-table"}}
+<div class="table-container">
+<table class="table">
+  <thead><tr><th>Time (UTC)</th>{{if .Admin}}<th>Participant</th>{{end}}<th>Namespace</th><th>Type</th><th>Status</th><th>Message</th><th>Version</th><th>Run</th></tr></thead>
+  <tbody>
+  {{range .Journal}}
+    <tr>
+      <td class="mono nowrap">{{clock .CreatedAt}}</td>
+      {{if $.Admin}}<td><a class="link" href="/admin/participants/{{.Participant}}">{{.Participant}}</a></td>{{end}}
+      <td class="mono">{{.Namespace}}</td>
+      <td><span class="badge" data-variant="{{if eq .Type "drift"}}destructive{{else}}secondary{{end}}">{{.Type}}</span></td>
+      <td><span class="badge" data-variant="{{statusVariant .Status}}">{{.Status}}</span></td>
+      <td class="msg">{{.Message}}{{if .Command}}<div class="mono small muted">$ {{.Command}}</div>{{end}}</td>
+      <td class="mono">{{.Version}}</td>
+      <td>{{if .RunURL}}<a class="link" href="{{.RunURL}}" target="_blank" rel="noopener">{{if .RunName}}{{.RunName}}{{else}}run{{end}}</a>{{end}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="{{if .Admin}}8{{else}}7{{end}}" class="muted">No journal entries.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{define "url-form"}}
+<form id="url-form" class="stack-sm" hx-post="/webhook/url" hx-target="this" hx-swap="outerHTML">
+  <div class="field"{{if .Error}} data-invalid="true"{{end}}>
+    <label for="url">Webhook URL</label>
+    <div class="row">
+      <input class="input grow" id="url" name="url" type="url" placeholder="https://p01-portal.lab.patoarchitekci.io/api/webhooks/github" value="{{.WebhookURL}}"{{if .Error}} aria-invalid="true" aria-describedby="url-error"{{end}}>
+      <button type="submit" class="btn">Save</button>
+    </div>
+    {{if .Error}}<p id="url-error" class="err">{{.Error}}</p>
+    {{else if .Notice}}<p class="ok">{{.Notice}}{{with .WebhookAt}} <span class="muted">({{clock .}} UTC)</span>{{end}}</p>
+    {{else}}<p class="muted small">GitHub deployment_status events for your namespaces are forwarded here. Empty removes it.</p>{{end}}
+  </div>
+</form>
+{{end}}
+
+{{define "action-result"}}
+{{if .Error}}<p class="err" role="alert">{{.Error}}</p>{{else if .Notice}}<p class="ok" role="status">{{.Notice}}</p>{{end}}
+{{end}}
+
+{{define "action-result-oob"}}
+{{template "action-result" .}}
+<div id="deliveries" hx-swap-oob="innerHTML">{{template "deliveries" .}}</div>
+{{end}}
