@@ -52,3 +52,36 @@ The version comes from the build: `docker build --build-arg VERSION=1.0.7 app` s
 ```sh
 docker buildx imagetools inspect ghcr.io/protopiatech-labs/shop:1.0.<N>
 ```
+
+## Deploy
+
+`deploy/base/` is the healthy shop: Deployments and Services `orders`, `inventory` and `payments`, the ConfigMap `shop-config` (`INVENTORY_URL`, `PAYMENTS_URL`, read by `orders` through `envFrom`), the `ResourceQuota` `shop` (the only quota source) and the Ingress `orders` (paths `/orders` and `/version` only, `cert-manager.io/cluster-issuer: letsencrypt`, TLS). Pods run as 65532 with a read-only root filesystem and no capabilities; `readinessProbe` is `/readyz`, `livenessProbe` is `/healthz`. The strategy is `Recreate`, so a broken deploy replaces the healthy pod instead of waiting behind it.
+
+`deploy/components/` has one kustomize component per breakage:
+
+| `--break` | Change | What the cluster shows |
+|---|---|---|
+| `bad-image` | `orders` image tag `0.0.0-does-not-exist` | `ImagePullBackOff` |
+| `oom` | `orders` `CHAOS=oom`, memory limit 32Mi | `OOMKilled`, then `CrashLoopBackOff` |
+| `crash` | `orders` `CHAOS=crash` | `CrashLoopBackOff` |
+| `missing-config` | `orders` `envFrom` ConfigMap `shop-config-missing` | `CreateContainerConfigError` |
+| `quota` | `orders` requests 1 CPU (quota 200m) | `FailedCreate ... exceeded quota` events |
+| `unready` | `orders` `CHAOS=unready` | pod not ready, no endpoints, 503 from Traefik |
+| `dependency-down` | `payments` replicas 0 | `orders` returns 502 |
+| `slow` | `inventory` `CHAOS=slow` | `orders` returns 504 |
+
+The base sets every field a component changes (for example `CHAOS=""`, the memory limit, `replicas: 1`), so a deploy without `--break` brings the namespace back to healthy without `--prune`.
+
+```sh
+scripts/deploy.sh <namespace> --version 1.0.N [--break <type>] [--dry-run]
+```
+
+`--version` is required. The namespace must be a DNS label, not `default`, `kube-*`, `lab-*`, `cert-manager` or `traefik`, and either new or already labelled `lab.protopia.tech/target=true`. The script writes a temporary overlay under `deploy/` (Namespace with the label, Ingress host `<namespace>.lab.patoarchitekci.io`, image tag, component) and runs `kubectl apply -k`. `--dry-run` prints `kubectl kustomize` output and skips the cluster check. The tag must exist in GHCR; the script does not build images.
+
+Chaos endpoints are internal: `kubectl -n <namespace> port-forward svc/orders 8080` and `curl -X POST localhost:8080/chaos/unready`.
+
+`deploy/loadgen/` runs `loadgen` in `lab-loadgen` with a ServiceAccount bound to a ClusterRole that can only get, list and watch namespaces:
+
+```sh
+scripts/deploy-loadgen.sh --version 1.0.N [--dry-run]
+```

@@ -1,0 +1,13 @@
+# The healthy shop. scripts/deploy.sh adds the namespace, the Ingress host,
+# the image tag and at most one component from ../components.
+# Every field a component changes is set explicitly here, so a healthy
+# `kubectl apply -k` overwrites it again.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  - resourcequota.yaml
+  - orders.yaml
+  - inventory.yaml
+  - payments.yaml
+  - ingress.yaml

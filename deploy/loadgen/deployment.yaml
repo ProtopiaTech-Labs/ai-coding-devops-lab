@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  labels:
+    app.kubernetes.io/name: loadgen
+    app.kubernetes.io/part-of: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loadgen
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loadgen
+        app.kubernetes.io/part-of: shop
+    spec:
+      serviceAccountName: loadgen
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: loadgen
+          image: ghcr.io/protopiatech-labs/shop
+          env:
+            - name: ROLE
+              value: loadgen
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

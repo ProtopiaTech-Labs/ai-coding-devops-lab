@@ -1,0 +1,11 @@
+# 502: payments has no replicas, orders cannot reach it.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: payments
+      spec:
+        replicas: 0

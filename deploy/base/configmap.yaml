@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-config
+data:
+  INVENTORY_URL: http://inventory:8080
+  PAYMENTS_URL: http://payments:8080

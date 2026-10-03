@@ -1,0 +1,32 @@
+# Public paths only; chaos endpoints stay internal (kubectl port-forward).
+# deploy.sh replaces the host in rules and tls.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orders
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - HOST_PLACEHOLDER
+      secretName: orders-tls
+  rules:
+    - host: HOST_PLACEHOLDER
+      http:
+        paths:
+          - path: /orders
+            pathType: Prefix
+            backend:
+              service:
+                name: orders
+                port:
+                  name: http
+          - path: /version
+            pathType: Prefix
+            backend:
+              service:
+                name: orders
+                port:
+                  name: http

@@ -1,0 +1,8 @@
+# loadgen in lab-loadgen. scripts/deploy-loadgen.sh sets the image tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab-loadgen
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - deployment.yaml

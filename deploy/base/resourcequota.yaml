@@ -1,0 +1,12 @@
+# The only source of the namespace quota. The healthy shop uses
+# 30m CPU, 96Mi memory requests and 192Mi memory limits (3 pods).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: shop
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: 200m
+    requests.memory: 512Mi
+    limits.memory: 1Gi
