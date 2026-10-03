@@ -134,3 +134,14 @@ scripts/participants.sh --participants participants.txt --delete   # asks for "y
 - `participant.yaml`: the template for one id (`${ID}`): namespace `pXX-portal` (label `lab.protopia.tech/participant=pXX`), ServiceAccount `portal` bound to `lab-portal`, ServiceAccount `deployer` with `admin` in `pXX-portal` only, ResourceQuota `portal` (`requests.cpu` 300m, `requests.memory` 512Mi, `limits.memory` 1Gi, `pods` 6), LimitRange `portal` (defaults for containers without resources), long-lived token Secrets for both accounts, and namespace `pXX-demo` labelled `lab.protopia.tech/target=true`, so `deploy.sh` accepts it.
 
 Everything goes through `kubectl apply`, so a second run prints `unchanged`. For each id the script writes `<cards>/<id>/`: `portal.kubeconfig`, `deployer.kubeconfig` (server and CA from the current context, token from the Secret) and `card.md` (name, relay API key, hosts `pXX.lab.patoarchitekci.io` and `pXX-demo.lab.patoarchitekci.io`, namespaces). The default `--cards` is `../training-ai-coding-devops/instructor/cards` (the private training repo). Tokens are never printed. `--delete` removes `pXX-portal`, `pXX-demo` and the binding of each listed id; namespaces the portal created (`pXX-*`) and the cards stay.
+
+## Discord
+
+`scripts/discord-webhooks.sh` creates one Discord webhook `lab-<id>` per participant on one channel (Discord API v10). It needs `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` in `.env`; the bot needs View Channel and Manage Webhooks on the channel. The participants file is the same as for `participants.sh` (only the ids are used).
+
+```sh
+scripts/discord-webhooks.sh --participants participants.txt --out discord.txt
+scripts/discord-webhooks.sh --participants participants.txt --delete   # asks for "yes"
+```
+
+The channel's webhooks are listed once; missing `lab-<id>` ones are created, existing ones are reused, so a second run creates nothing. `--out` gets one line per participant, `<id> https://discord.com/api/webhooks/<id>/<token>` (mode 600). URLs are never printed to the terminal; treat the file as a secret (anyone with a URL can post to the channel). HTTP 429 is retried after `retry_after`; any other error stops the script with the Discord message. `--delete` removes `lab-<id>` for the listed ids.
