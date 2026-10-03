@@ -23,8 +23,8 @@ const (
 )
 
 // runLoadgen sends POST /orders to every target each interval. It serves
-// /healthz only: no chaos endpoints, and no /readyz because nothing routes
-// traffic to loadgen.
+// /healthz and /metrics only: no chaos endpoints, and no /readyz because
+// nothing depends on loadgen being ready.
 func runLoadgen(log *slog.Logger, port string) {
 	interval, err := time.ParseDuration(envOr("LOADGEN_INTERVAL", "1s"))
 	if err != nil || interval <= 0 {
@@ -45,7 +45,9 @@ func runLoadgen(log *slog.Logger, port string) {
 		discover = func() ([]string, error) { return k.targets(domain) }
 	}
 
+	m := newMetrics()
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /metrics", m.handler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -69,6 +71,7 @@ func runLoadgen(log *slog.Logger, port string) {
 			log.Info("targets", "targets", t)
 		}
 		targets.Store(&t)
+		m.setTargets(t)
 	}
 	refresh()
 	// Discovery runs on its own goroutine so a slow API call never delays a send tick.
@@ -79,13 +82,13 @@ func runLoadgen(log *slog.Logger, port string) {
 	}()
 	for range time.Tick(interval) {
 		for _, t := range *targets.Load() {
-			go sendOrder(log, client, t)
+			go sendOrder(log, client, m, t)
 		}
 	}
 }
 
-// sendOrder sends one POST /orders and logs the result.
-func sendOrder(log *slog.Logger, client *http.Client, target string) {
+// sendOrder sends one POST /orders, records it in m and logs the result.
+func sendOrder(log *slog.Logger, client *http.Client, m *metrics, target string) {
 	start := time.Now()
 	status, versions, errMsg := 0, map[string]string(nil), ""
 	resp, err := client.Post(target+"/orders", "application/json", nil)
@@ -97,8 +100,10 @@ func sendOrder(log *slog.Logger, client *http.Client, target string) {
 		status = resp.StatusCode
 		versions, errMsg = parseOrderResponse(body)
 	}
+	elapsed := time.Since(start)
+	m.observe(target, status, elapsed)
 	log.Info("order", "target", target, "status", status,
-		"latency_ms", time.Since(start).Milliseconds(), "versions", versions, "error", errMsg)
+		"latency_ms", elapsed.Milliseconds(), "versions", versions, "error", errMsg)
 }
 
 // parseOrderResponse returns the versions of a 201 body, or the error of a

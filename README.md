@@ -22,7 +22,7 @@ Never commit IDs, IPs or secrets. They live in `.env` (gitignored) and in GitHub
 
 - `orders`: `POST /orders` calls `inventory` (`POST /reserve`) and `payments` (`POST /charge`) at `INVENTORY_URL` and `PAYMENTS_URL` with a 2 s timeout. It returns 201 with `versions` of all three services, 502 on an upstream error and 504 on an upstream timeout.
 - `orders`, `inventory`, `payments`: `GET /version`, `GET /healthz`, `GET /readyz`, and `POST /chaos/crash|oom|unready|slow`. `CHAOS=<mode>` applies a mode at start. `slow` delays every response by 5 s, except `/healthz`, `/readyz` and `/chaos/*`.
-- `loadgen`: every `LOADGEN_INTERVAL` (default `1s`) sends `POST /orders` to each target with a 5 s timeout and logs `target`, `status`, `latency_ms`, `versions` and `error`. Targets are `TARGETS` (comma-separated base URLs) or, when unset, `https://<namespace>.<TARGET_DOMAIN>` (default `lab.patoarchitekci.io`) for every namespace labelled `lab.protopia.tech/target=true`, listed every 30 s through the Kubernetes API with the pod's ServiceAccount. It serves `GET /healthz` only: no chaos endpoints, and no `/readyz` because nothing sends traffic to it.
+- `loadgen`: every `LOADGEN_INTERVAL` (default `1s`) sends `POST /orders` to each target with a 5 s timeout and logs `target`, `status`, `latency_ms`, `versions` and `error`. Targets are `TARGETS` (comma-separated base URLs) or, when unset, `https://<namespace>.<TARGET_DOMAIN>` (default `lab.patoarchitekci.io`) for every namespace labelled `lab.protopia.tech/target=true`, listed every 30 s through the Kubernetes API with the pod's ServiceAccount. It serves `GET /healthz` and `GET /metrics` (Prometheus text format, standard library only): `loadgen_requests_total{target,code}` (`code` is the HTTP status or `error`), `loadgen_request_duration_seconds_sum{target}` and `_count{target}`, and `loadgen_target_up{target}` (1 when the last request returned 201, else 0; dropped when the target leaves discovery, counters stay). No chaos endpoints, and no `/readyz` because nothing depends on it being ready.
 
 ```sh
 cd app && go vet ./... && go test ./...
@@ -80,7 +80,7 @@ scripts/deploy.sh <namespace> --version 1.0.N [--break <type>] [--dry-run]
 
 Chaos endpoints are internal: `kubectl -n <namespace> port-forward svc/orders 8080` and `curl -X POST localhost:8080/chaos/unready`.
 
-`deploy/loadgen/` runs `loadgen` in `lab-loadgen` with a ServiceAccount bound to a ClusterRole that can only get, list and watch namespaces:
+`deploy/loadgen/` runs `loadgen` in `lab-loadgen` with a ServiceAccount bound to a ClusterRole that can only get, list and watch namespaces, and the in-cluster Service `loadgen` (port 8080) that the relay scrapes for `/metrics`:
 
 ```sh
 scripts/deploy-loadgen.sh --version 1.0.N [--dry-run]

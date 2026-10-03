@@ -1,0 +1,12 @@
+# In-cluster only: the relay scrapes GET /metrics here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: loadgen
+spec:
+  selector:
+    app.kubernetes.io/name: loadgen
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
