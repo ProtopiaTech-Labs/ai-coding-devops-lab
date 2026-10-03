@@ -8,6 +8,10 @@
 # Registered namespaces come from `kubectl get ns -l lab.protopia.tech/target=true`
 # (or --namespaces). Versions are the tags of ghcr.io/protopiatech-labs/shop, read
 # from the public registry API with an anonymous token (no gh token scope needed).
+# Before each random pick, every registered namespace without deployment/orders gets a
+# healthy deploy (break=none, newest tag), logged as `bootstrap`; such a namespace is
+# not picked again in that iteration. --dry-run with --namespaces cannot see the
+# cluster, so it assumes no bootstrap is needed.
 # --dry-run prints the choices, never runs the workflow or sleeps, and stops after
 # --iterations (default 5). Ctrl+C stops it.
 set -euo pipefail
@@ -20,6 +24,8 @@ BREAKS=(bad-image crash dependency-down missing-config oom quota slow unready)
 
 usage() {
   echo "usage: $0 [--interval S] [--iterations N] [--break-probability P] [--seed N] [--namespaces a,b] [--dry-run]" >&2
+  echo "Namespaces without deployment/orders get a healthy deploy (bootstrap) before each random pick." >&2
+  echo "--dry-run with --namespaces cannot see the cluster, so it assumes no bootstrap is needed." >&2
   exit 2
 }
 die() { echo "chaos-runner.sh: $*" >&2; exit 1; }
@@ -62,6 +68,17 @@ list_versions() {
     | jq -r '.tags[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V
 }
 
+# $1 namespace, $2 version, $3 break, $4 label; prints one log line.
+run_deploy() {
+  local out
+  # gh prints the run URL on success; keep the last line only.
+  if out="$(gh workflow run deploy.yml -R "$REPO" -f namespace="$1" -f version="$2" -f break="$3" 2>&1)"; then
+    echo "$now ${4}namespace=$1 version=$2 break=$3 ${out##*$'\n'}"
+  else
+    echo "$now ${4}namespace=$1 version=$2 break=$3 FAILED: ${out//$'\n'/ }"
+  fi
+}
+
 trap 'echo "$(date "+%F %T") stopped"; exit 0' INT TERM
 
 i=0
@@ -77,19 +94,33 @@ while [ -z "$iterations" ] || [ "$i" -lt "$iterations" ]; do
   elif [ "${#versions[@]}" -eq 0 ]; then
     echo "$now no versions in ghcr.io/$PACKAGE, waiting"
   else
-    ns="${nss[RANDOM % ${#nss[@]}]}"
-    version="${versions[RANDOM % ${#versions[@]}]}"
-    brk=none
-    if [ $((RANDOM % 1000)) -lt "$permille" ]; then brk="${BREAKS[RANDOM % ${#BREAKS[@]}]}"; fi
-
-    if $dry_run; then
-      echo "$i namespace=$ns version=$version break=$brk (dry run)"
-    else
-      # gh prints the run URL on success; keep the last line only.
-      if out="$(gh workflow run deploy.yml -R "$REPO" -f namespace="$ns" -f version="$version" -f break="$brk" 2>&1)"; then
-        echo "$now namespace=$ns version=$version break=$brk ${out##*$'\n'}"
+    # Bootstrap: namespaces without a shop get a healthy deploy (newest tag) first.
+    newest="${versions[${#versions[@]} - 1]}"
+    cands=()
+    for n in "${nss[@]}"; do
+      if ! { $dry_run && [ -n "$namespaces" ]; } && ! kubectl -n "$n" get deployment orders >/dev/null 2>&1; then
+        if $dry_run; then
+          echo "$i bootstrap namespace=$n version=$newest break=none (dry run)"
+        else
+          run_deploy "$n" "$newest" none "bootstrap "
+        fi
       else
-        echo "$now namespace=$ns version=$version break=$brk FAILED: ${out//$'\n'/ }"
+        cands+=("$n")
+      fi
+    done
+
+    if [ "${#cands[@]}" -eq 0 ]; then
+      echo "$now every namespace was bootstrapped, no random pick"
+    else
+      ns="${cands[RANDOM % ${#cands[@]}]}"
+      version="${versions[RANDOM % ${#versions[@]}]}"
+      brk=none
+      if [ $((RANDOM % 1000)) -lt "$permille" ]; then brk="${BREAKS[RANDOM % ${#BREAKS[@]}]}"; fi
+
+      if $dry_run; then
+        echo "$i namespace=$ns version=$version break=$brk (dry run)"
+      else
+        run_deploy "$ns" "$version" "$brk" ""
       fi
     fi
   fi

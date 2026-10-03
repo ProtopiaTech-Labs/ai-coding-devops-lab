@@ -98,7 +98,7 @@ It logs in with the managed identity (OIDC, `azure/login`), gets the AKS kubecon
 
 ## Chaos runner
 
-`scripts/chaos-runner.sh` runs on the instructor's machine (needs `kubectl` with kubelogin, `gh`, `curl` and `jq`). Every `--interval` seconds it picks a random registered namespace (`lab.protopia.tech/target=true`), a random existing version of `ghcr.io/protopiatech-labs/shop` and, with probability `--break-probability`, a random breakage (otherwise `none`), then runs the deploy workflow. It prints one line per iteration: time, namespace, version, break and the run URL.
+`scripts/chaos-runner.sh` runs on the instructor's machine (needs `kubectl` with kubelogin, `gh`, `curl` and `jq`). Every `--interval` seconds it picks a random registered namespace (`lab.protopia.tech/target=true`), a random existing version of `ghcr.io/protopiatech-labs/shop` and, with probability `--break-probability`, a random breakage (otherwise `none`), then runs the deploy workflow. Before the random pick of each iteration it bootstraps: every registered namespace without `deployment/orders` gets a healthy deploy (`break=none`, newest tag), logged with a `bootstrap` prefix, and is not picked again in that iteration. `--dry-run` with `--namespaces` cannot see the cluster and assumes no bootstrap is needed. It prints one line per iteration: time, namespace, version, break and the run URL.
 
 ```sh
 scripts/chaos-runner.sh                                   # every 60 s, 30% breakages, until Ctrl+C
