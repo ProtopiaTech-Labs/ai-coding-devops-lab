@@ -132,6 +132,16 @@ func parseParticipants(r io.Reader) ([]participant, error) {
 	return out, nil
 }
 
+// ownerOf returns the participant id from a namespace prefix (`p01-demo` → p01)
+// when it is in known, or "".
+func ownerOf(ns string, known map[string]participant) string {
+	prefix, _, ok := strings.Cut(ns, "-")
+	if _, k := known[prefix]; !ok || !k {
+		return ""
+	}
+	return prefix
+}
+
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

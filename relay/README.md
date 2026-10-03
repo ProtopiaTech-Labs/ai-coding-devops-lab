@@ -41,13 +41,13 @@ The image runs as 65532 from `scratch`. A volume mounted on `/data` needs `secur
 | `GET /api/namespaces` | participant | own namespaces with connected state |
 | `GET /api/webhook` | participant | `{url, updated_at, secret}`: the shared secret, for copying |
 | `PUT /api/webhook-url` | participant | `{"url": "https://..."}`; `""` removes it |
-| `POST /api/webhook/test` | participant | signed `ping` to the own URL; returns the delivery |
+| `POST /api/webhook/test` | participant | `ping` signed with `X-Hub-Signature-256` to the own URL; returns the delivery |
 | `POST /api/webhook/replay?last=N` | participant | N 1..20 (default 1): resends the last N GitHub deliveries with original headers and body, oldest first, in the background; returns `{queued}` |
 | `GET /api/deliveries` | participant | newest 50, without headers and body |
 | `GET /api/journal?since=&participant=` | both | participant: own entries (`participant` of someone else → 403); admin: all or one. `since` is RFC 3339 and matches `updated_at`, so a poller also sees patched entries. Newest first, max 500. |
 | `GET /api/participants` | admin | id, name, connected namespaces, webhook URL, last delivery, last journal entry time |
-| `POST /api/journal` | admin | `{namespace, type: deploy\|agent\|manual, message, command, undo, status: open\|fixed}`; status defaults to `open`; the owner comes from the namespace prefix. Types by source: `deploy` (GitHub webhook), `agent` (chaos subagent), `manual` (instructor, e.g. `drift.sh` by hand). The legacy `drift` is still accepted and stored as `manual`. |
-| `PATCH /api/journal/{id}` | admin | `{status, message}` |
+| `POST /api/journal` | admin | `{namespace, type: deploy\|agent\|manual, message, command, undo, status: open\|fixed}`; status defaults to `open`; the owner comes from the namespace prefix. Types by source: `deploy` (GitHub webhook), `agent` (chaos subagent), `manual` (instructor, e.g. `drift.sh` by hand). Any other type → 400. |
+| `PATCH /api/journal/{id}` | admin | `{"status": "open"\|"fixed"}` only; any other field → 400 |
 
 ## UI
 

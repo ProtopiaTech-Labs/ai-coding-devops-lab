@@ -110,16 +110,6 @@ func (s *server) adminOnly(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// ownerOf returns the participant id from a namespace prefix (`p01-demo` → p01)
-// when it is a known participant, connected namespace or not.
-func (s *server) ownerOf(ns string) string {
-	prefix, _, ok := strings.Cut(ns, "-")
-	if _, known := s.byID[prefix]; !ok || !known {
-		return ""
-	}
-	return prefix
-}
-
 func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	p, admin, ok := s.caller(r)
 	switch {
@@ -170,7 +160,7 @@ func (s *server) listNamespaces(ctx context.Context, pid string) ([]namespaceRow
 }
 
 func (s *server) handleWebhookGet(w http.ResponseWriter, r *http.Request, p participant) {
-	u, updated, err := s.webhookSetting(r.Context(), p.ID)
+	u, updated, err := s.webhookURL(r.Context(), p.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -178,8 +168,8 @@ func (s *server) handleWebhookGet(w http.ResponseWriter, r *http.Request, p part
 	writeJSON(w, http.StatusOK, map[string]string{"url": u, "updated_at": updated, "secret": s.cfg.WebhookSecret})
 }
 
-// webhookSetting returns the participant's URL and when it was set ("" when unset).
-func (s *server) webhookSetting(ctx context.Context, pid string) (u, updated string, err error) {
+// webhookURL returns the participant's URL and when it was set ("" when unset).
+func (s *server) webhookURL(ctx context.Context, pid string) (u, updated string, err error) {
 	err = s.db.QueryRowContext(ctx, `SELECT url, updated_at FROM webhook_urls WHERE participant_id = ?`, pid).Scan(&u, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
@@ -391,10 +381,7 @@ func (s *server) handleJournalCreate(w http.ResponseWriter, r *http.Request) {
 	if in.Status == "" {
 		in.Status = "open"
 	}
-	if in.Type == "drift" { // legacy name, kept for older clients
-		in.Type = "manual"
-	}
-	owner := s.ownerOf(in.Namespace)
+	owner := ownerOf(in.Namespace, s.byID)
 	switch {
 	case owner == "":
 		writeError(w, http.StatusBadRequest, "namespace must start with a known participant id")
@@ -426,29 +413,20 @@ func (s *server) handleJournalPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Status  *string `json:"status"`
-		Message *string `json:"message"`
+		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&in); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, `want JSON {"status": "open"|"fixed"}`)
 		return
 	}
-	if in.Status == nil && in.Message == nil {
-		writeError(w, http.StatusBadRequest, "nothing to change: status or message")
-		return
-	}
-	if in.Status != nil && *in.Status != "open" && *in.Status != "fixed" {
+	if in.Status != "open" && in.Status != "fixed" {
 		writeError(w, http.StatusBadRequest, "status must be open or fixed")
 		return
 	}
-	set, args := []string{"updated_at = ?"}, []any{ts(s.now())}
-	if in.Status != nil {
-		set, args = append(set, "status = ?"), append(args, *in.Status)
-	}
-	if in.Message != nil {
-		set, args = append(set, "message = ?"), append(args, nullStr(*in.Message))
-	}
-	res, err := s.db.ExecContext(r.Context(), `UPDATE journal SET `+strings.Join(set, ", ")+` WHERE id = ?`, append(args, id)...)
+	res, err := s.db.ExecContext(r.Context(), `UPDATE journal SET status = ?, updated_at = ? WHERE id = ?`,
+		in.Status, ts(s.now()), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -506,7 +484,7 @@ func (s *server) participantsOverview(ctx context.Context) ([]participantRow, er
 			row.Namespaces = append(row.Namespaces, n)
 		}
 		rows.Close()
-		if row.WebhookURL, err = s.webhookURL(ctx, p.ID); err != nil {
+		if row.WebhookURL, _, err = s.webhookURL(ctx, p.ID); err != nil {
 			return nil, err
 		}
 		ds, err := s.deliveries(ctx, p.ID, 1)

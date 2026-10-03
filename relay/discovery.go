@@ -144,26 +144,16 @@ func parseNamespaceList(body []byte) ([]string, error) {
 type discovery struct {
 	db      *sql.DB
 	log     *slog.Logger
-	known   map[string]bool // participant ids
+	byID    map[string]participant
 	ignored map[string]bool // names already logged as ignored
 }
 
 func newDiscovery(db *sql.DB, log *slog.Logger, ps []participant) *discovery {
-	d := &discovery{db: db, log: log, known: map[string]bool{}, ignored: map[string]bool{}}
+	d := &discovery{db: db, log: log, byID: map[string]participant{}, ignored: map[string]bool{}}
 	for _, p := range ps {
-		d.known[p.ID] = true
+		d.byID[p.ID] = p
 	}
 	return d
-}
-
-// owner returns the participant id from the name prefix (`p01-demo` → p01),
-// or "" when the prefix is not a known participant.
-func (d *discovery) owner(name string) string {
-	prefix, _, ok := strings.Cut(name, "-")
-	if !ok || !d.known[prefix] {
-		return ""
-	}
-	return prefix
 }
 
 // reconcile applies one namespace list: new names are inserted connected,
@@ -173,7 +163,7 @@ func (d *discovery) owner(name string) string {
 func (d *discovery) reconcile(ctx context.Context, names []string, now time.Time) error {
 	listed := map[string]string{} // name → owner
 	for _, n := range names {
-		o := d.owner(n)
+		o := ownerOf(n, d.byID)
 		if o == "" {
 			if !d.ignored[n] {
 				d.ignored[n] = true

@@ -153,7 +153,7 @@ func TestUICSRF(t *testing.T) {
 	if w := e.do("POST", "/login", "", url.Values{"key": {p01Key}}, "Sec-Fetch-Site", "cross-site"); w.Code != http.StatusForbidden {
 		t.Errorf("cross-site login: %d", w.Code)
 	}
-	if u, _, _ := e.s.webhookSetting(context.Background(), "p01"); u != "" {
+	if u, _, _ := e.s.webhookURL(context.Background(), "p01"); u != "" {
 		t.Errorf("cross-site write stored %q", u)
 	}
 }

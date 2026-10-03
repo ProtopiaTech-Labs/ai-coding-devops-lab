@@ -315,7 +315,7 @@ func (u *ui) handleNamespaces(w http.ResponseWriter, r *http.Request, p particip
 func (u *ui) webhookView(ctx context.Context, p participant) (view, error) {
 	v := view{Title: "Webhook", Nav: "webhook", Who: p, Secret: u.s.cfg.WebhookSecret}
 	var err error
-	if v.WebhookURL, v.WebhookAt, err = u.s.webhookSetting(ctx, p.ID); err != nil {
+	if v.WebhookURL, v.WebhookAt, err = u.s.webhookURL(ctx, p.ID); err != nil {
 		return v, err
 	}
 	v.Deliveries, err = u.s.deliveries(ctx, p.ID, 50)
@@ -437,7 +437,7 @@ func (u *ui) handleAdminParticipant(w http.ResponseWriter, r *http.Request) {
 	v := view{Title: p.ID, Nav: "admin", Admin: true, Participant: p}
 	var err error
 	if v.Namespaces, err = u.namespaceViews(r.Context(), p.ID); err == nil {
-		if v.WebhookURL, v.WebhookAt, err = u.s.webhookSetting(r.Context(), p.ID); err == nil {
+		if v.WebhookURL, v.WebhookAt, err = u.s.webhookURL(r.Context(), p.ID); err == nil {
 			if v.Deliveries, err = u.s.deliveries(r.Context(), p.ID, 50); err == nil {
 				v.Journal, err = u.s.listJournal(r.Context(), journalFilter{Participant: p.ID}, 200)
 			}
@@ -469,42 +469,4 @@ func (u *ui) handleAdminGitHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.render(w, http.StatusOK, "admin_github", "layout", view{Title: "GitHub webhook", Nav: "admin-github", Admin: true, Events: evs})
-}
-
-func parseTS(s string) (time.Time, bool) {
-	t, err := time.Parse(tsLayout, s)
-	return t, err == nil
-}
-
-// fmtTime shows a stored time in UTC with layout, or "" when unset.
-func fmtTime(s, layout string) string {
-	t, ok := parseTS(s)
-	if !ok {
-		return s
-	}
-	return t.Format(layout)
-}
-
-func olderThan(now time.Time, s string, d time.Duration) bool {
-	t, ok := parseTS(s)
-	return ok && now.Sub(t) > d
-}
-
-// age is a short relative time: "40s", "12m", "3h", "2d".
-func age(now time.Time, s string) string {
-	t, ok := parseTS(s)
-	if !ok {
-		return ""
-	}
-	d := now.Sub(t)
-	switch {
-	case d < time.Minute:
-		return strconv.Itoa(int(d.Seconds())) + "s"
-	case d < time.Hour:
-		return strconv.Itoa(int(d.Minutes())) + "m"
-	case d < 48*time.Hour:
-		return strconv.Itoa(int(d.Hours())) + "h"
-	default:
-		return strconv.Itoa(int(d.Hours()/24)) + "d"
-	}
 }

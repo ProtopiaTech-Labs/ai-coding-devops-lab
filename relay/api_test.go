@@ -132,8 +132,8 @@ func TestAPIJournal(t *testing.T) {
 	clock = base.Add(time.Hour)
 	e2 := create(`{"namespace":"p02-demo","type":"manual","message":"x","status":"open"}`)
 
-	for _, bad := range []string{`{"namespace":"p09-demo","type":"drift"}`, `{"namespace":"p01-demo","type":"other"}`,
-		`{"namespace":"p01-demo","type":"drift","status":"done"}`, `{`} {
+	for _, bad := range []string{`{"namespace":"p09-demo","type":"manual"}`, `{"namespace":"p01-demo","type":"other"}`,
+		`{"namespace":"p01-demo","type":"drift"}`, `{"namespace":"p01-demo","type":"manual","status":"done"}`, `{`} {
 		if w := apiCall(t, s, "POST", "/api/journal", adminKey, bad); w.Code != http.StatusBadRequest {
 			t.Errorf("POST %s: %d", bad, w.Code)
 		}
@@ -169,20 +169,18 @@ func TestAPIJournal(t *testing.T) {
 		t.Errorf("bad since: %d", w.Code)
 	}
 
-	if d := create(`{"namespace":"p01-demo","type":"drift","message":"legacy"}`); d.Type != "manual" {
-		t.Errorf("drift stored as %q, want manual", d.Type)
-	}
 	// A patch moves updated_at, so a poller with since sees the change.
 	clock = base.Add(2 * time.Hour)
-	w := apiCall(t, s, "PATCH", "/api/journal/1", adminKey, `{"status":"fixed","message":"restored"}`)
+	w := apiCall(t, s, "PATCH", "/api/journal/1", adminKey, `{"status":"fixed"}`)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"fixed"`) {
 		t.Fatalf("PATCH: %d %s", w.Code, w.Body)
 	}
 	since = base.Add(90 * time.Minute).Format(time.RFC3339)
-	if es := list(adminKey, "?since="+since); len(es) != 1 || es[0].ID != e1.ID || es[0].Message != "restored" {
+	if es := list(adminKey, "?since="+since); len(es) != 1 || es[0].ID != e1.ID || es[0].Status != "fixed" {
 		t.Errorf("since after patch: %+v", es)
 	}
-	for path, body := range map[string]string{"/api/journal/1": `{"status":"gone"}`, "/api/journal/2": `{}`} {
+	for path, body := range map[string]string{"/api/journal/1": `{"status":"gone"}`, "/api/journal/2": `{}`,
+		"/api/journal/3": `{"status":"fixed","message":"restored"}`} {
 		if w := apiCall(t, s, "PATCH", path, adminKey, body); w.Code != http.StatusBadRequest {
 			t.Errorf("PATCH %s %s: %d", path, body, w.Code)
 		}

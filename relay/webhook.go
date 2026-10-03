@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -46,12 +44,6 @@ func signSHA256(secret string, body []byte) string {
 	m := hmac.New(sha256.New, []byte(secret))
 	m.Write(body)
 	return "sha256=" + hex.EncodeToString(m.Sum(nil))
-}
-
-func signSHA1(secret string, body []byte) string {
-	m := hmac.New(sha1.New, []byte(secret))
-	m.Write(body)
-	return "sha1=" + hex.EncodeToString(m.Sum(nil))
 }
 
 // validSignature checks X-Hub-Signature-256 in constant time.
@@ -190,7 +182,7 @@ func (s *server) handleGitHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ns := p.namespace(s.cfg.TargetDomain)
-	owner := s.ownerOf(ns)
+	owner := ownerOf(ns, s.byID)
 	if owner == "" {
 		s.log.Info("github webhook: not routed", "delivery", gd, "namespace", ns, "state", p.DeploymentStatus.State)
 		s.recordEvent(event, gd, ns, "", "unrouted", "no known participant for namespace "+fmt.Sprintf("%q", ns))
@@ -205,7 +197,7 @@ func (s *server) handleGitHub(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	target, err := s.webhookURL(r.Context(), owner)
+	target, _, err := s.webhookURL(r.Context(), owner)
 	if err != nil {
 		s.log.Error("github webhook: read url", "participant", owner, "err", err)
 	}
@@ -300,7 +292,7 @@ func (s *server) handleTest(w http.ResponseWriter, r *http.Request, p participan
 // sendTest sends a signed ping to the participant's URL and returns the
 // stored delivery; no URL is an inputError.
 func (s *server) sendTest(ctx context.Context, pid string) (delivery, error) {
-	target, err := s.webhookURL(ctx, pid)
+	target, _, err := s.webhookURL(ctx, pid)
 	if err != nil {
 		return delivery{}, err
 	}
@@ -321,7 +313,6 @@ func (s *server) sendTest(ctx context.Context, pid string) (delivery, error) {
 		"X-GitHub-Delivery":   gd,
 		"X-GitHub-Hook-ID":    "0",
 		"X-Hub-Signature-256": signSHA256(s.cfg.WebhookSecret, body),
-		"X-Hub-Signature":     signSHA1(s.cfg.WebhookSecret, body),
 		"User-Agent":          "GitHub-Hookshot/lab-relay-test",
 	}
 	return s.deliver(ctx, pid, "", "test", "ping", gd, headers, body, target), nil
@@ -352,7 +343,7 @@ func (s *server) replay(ctx context.Context, pid string, n int) (int, error) {
 	if n < 1 || n > 20 {
 		return 0, inputError{"last must be 1..20"}
 	}
-	target, err := s.webhookURL(ctx, pid)
+	target, _, err := s.webhookURL(ctx, pid)
 	if err != nil {
 		return 0, err
 	}
@@ -435,15 +426,6 @@ func (s *server) githubEvents(ctx context.Context, limit int) ([]githubEvent, er
 		out = append(out, e)
 	}
 	return out, rows.Err()
-}
-
-func (s *server) webhookURL(ctx context.Context, pid string) (string, error) {
-	var u string
-	err := s.db.QueryRowContext(ctx, `SELECT url FROM webhook_urls WHERE participant_id = ?`, pid).Scan(&u)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	return u, err
 }
 
 // async runs f in the background; wait() blocks until all such work is done.

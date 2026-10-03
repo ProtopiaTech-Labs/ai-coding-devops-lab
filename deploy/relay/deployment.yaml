@@ -28,9 +28,6 @@ spec:
       containers:
         - name: relay
           image: ghcr.io/protopiatech-labs/relay
-          env:
-            - name: TARGET_DOMAIN
-              value: lab.patoarchitekci.io
           ports:
             - name: http
               containerPort: 8080

@@ -133,9 +133,6 @@ func TestRecordedSignatures(t *testing.T) {
 		if !validSignature(testSecret, body, h["X-Hub-Signature-256"]) {
 			t.Errorf("%s: recorded signature does not verify", n)
 		}
-		if got := signSHA1(testSecret, body); got != h["X-Hub-Signature"] {
-			t.Errorf("%s: sha1 = %s, want %s", n, got, h["X-Hub-Signature"])
-		}
 	}
 }
 
@@ -361,7 +358,7 @@ func TestTestEventSigned(t *testing.T) {
 	if !validSignature(testSecret, got[0].body, got[0].header.Get("X-Hub-Signature-256")) {
 		t.Error("test event signature does not verify with the shared secret")
 	}
-	if got[0].header.Get("X-GitHub-Event") != "ping" || got[0].header.Get("X-Hub-Signature") != signSHA1(testSecret, got[0].body) {
+	if got[0].header.Get("X-GitHub-Event") != "ping" || got[0].header.Get("X-Hub-Signature") != "" {
 		t.Errorf("headers %v", got[0].header)
 	}
 }

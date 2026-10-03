@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -80,12 +79,15 @@ var migrations = []string{
 
 	// Journal types by source: deploy, agent, manual (was drift).
 	`UPDATE journal SET type = 'manual' WHERE type = 'drift';`,
+
+	// Unused: lists filter by participant or updated_at.
+	`DROP INDEX journal_created;`,
 }
 
 // openDB opens (or creates) the SQLite file and applies pending migrations.
 func openDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", "file:"+path+
-		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
+		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, err
 	}
@@ -124,8 +126,3 @@ func migrate(db *sql.DB) error {
 	}
 	return nil
 }
-
-// tsLayout is RFC 3339 in UTC with fixed-width milliseconds, so stored times sort as text.
-const tsLayout = "2006-01-02T15:04:05.000Z"
-
-func ts(t time.Time) string { return t.UTC().Format(tsLayout) }
