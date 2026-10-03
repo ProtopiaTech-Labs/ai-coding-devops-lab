@@ -7,13 +7,14 @@
   <section>
   <div class="table-container">
   <table class="table">
-    <thead><tr><th>Id</th><th>Name</th><th>Namespaces</th><th>Webhook URL</th><th>Last delivery</th><th>Last journal entry</th></tr></thead>
+    <thead><tr><th>Id</th><th>Name</th><th>Namespaces</th><th>App</th><th>Webhook URL</th><th>Last delivery</th><th>Last journal entry</th></tr></thead>
     <tbody>
     {{range .Overview}}
       <tr>
         <td><a class="link mono" href="/admin/participants/{{.ID}}">{{.ID}}</a></td>
         <td>{{.Name}}</td>
         <td title="{{range $i, $n := .Namespaces}}{{if $i}}, {{end}}{{$n}}{{end}}">{{len .Namespaces}}</td>
+        <td class="nowrap">{{if or .AppUp .AppDown}}<span class="badge" data-variant="{{if .AppDown}}destructive{{else}}primary{{end}}">{{.AppUp}} up / {{.AppDown}} down</span>{{else}}<span class="muted">unknown</span>{{end}}</td>
         <td class="small url">{{if .WebhookURL}}{{.WebhookURL}}{{else}}<span class="muted">not set</span>{{end}}</td>
         <td class="nowrap">{{with .LastDelivery}}{{if .StatusCode}}<span class="badge" data-variant="{{codeVariant .StatusCode}}">{{.StatusCode}}</span>{{else}}<span class="badge" data-variant="destructive">error</span>{{end}} <span class="small">{{clock .CreatedAt}}</span>{{else}}<span class="muted">none</span>{{end}}</td>
         <td class="nowrap">{{if .LastJournalAt}}<span class="badge" data-variant="{{if stale .LastJournalAt}}destructive{{else}}secondary{{end}}">{{age .LastJournalAt}} ago</span> <span class="small">{{clock .LastJournalAt}}</span>{{else}}<span class="muted">none</span>{{end}}</td>

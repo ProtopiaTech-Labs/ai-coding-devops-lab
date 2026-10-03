@@ -88,6 +88,17 @@ func newUI(s *server, workloadOf func(context.Context, string) workload) (*ui, e
 	}))
 	funcs := template.FuncMap{
 		"clock": func(t string) string { return fmtTime(t, "01-02 15:04:05") },
+		"hhmm":  func(t string) string { return fmtTime(t, "15:04") },
+		"appVariant": func(st string) string {
+			switch st {
+			case "up":
+				return "primary"
+			case "down":
+				return "destructive"
+			default:
+				return "outline"
+			}
+		},
 		"age":   func(t string) string { return age(s.now(), t) },
 		"stale": func(t string) bool { return olderThan(s.now(), t, 10*time.Minute) },
 		"codeVariant": func(code int) string {
@@ -151,6 +162,7 @@ func (u *ui) routes(mux *http.ServeMux) {
 	mux.Handle("POST /logout", u.csrf.Handler(http.HandlerFunc(u.handleLogout)))
 
 	mux.HandleFunc("GET /namespaces", u.participant(u.handleNamespaces))
+	mux.HandleFunc("GET /namespaces/table", u.participant(u.handleNamespacesTable))
 	mux.HandleFunc("GET /webhook", u.participant(u.handleWebhook))
 	mux.HandleFunc("GET /webhook/deliveries", u.participant(u.handleDeliveries))
 	mux.Handle("POST /webhook/url", u.csrf.Handler(u.participant(u.handleSetURL)))
@@ -310,6 +322,16 @@ func (u *ui) handleNamespaces(w http.ResponseWriter, r *http.Request, p particip
 		return
 	}
 	u.render(w, http.StatusOK, "namespaces", "layout", view{Title: "Namespaces", Nav: "namespaces", Who: p, Namespaces: ns})
+}
+
+// handleNamespacesTable is the fragment the Namespaces page polls.
+func (u *ui) handleNamespacesTable(w http.ResponseWriter, r *http.Request, p participant) {
+	ns, err := u.namespaceViews(r.Context(), p.ID)
+	if err != nil {
+		u.fail(w, err)
+		return
+	}
+	u.render(w, http.StatusOK, "parts", "namespaces-table", view{Namespaces: ns})
 }
 
 func (u *ui) webhookView(ctx context.Context, p participant) (view, error) {

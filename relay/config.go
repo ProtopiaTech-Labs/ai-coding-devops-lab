@@ -25,6 +25,7 @@ type config struct {
 	Port              string
 	TargetDomain      string
 	DiscoveryInterval time.Duration
+	HealthMetricsURL  string // loadgen /metrics, scraped for the App column
 	// AllowPrivateTargets lets webhook URLs use http:// and loopback or
 	// private addresses. Local tests only, never in the cluster.
 	AllowPrivateTargets bool
@@ -38,6 +39,8 @@ func loadConfig() (*config, error) {
 		DBPath:       envOr("DB_PATH", "/data/relay.db"),
 		Port:         envOr("PORT", "8080"),
 		TargetDomain: envOr("TARGET_DOMAIN", "lab.patoarchitekci.io"),
+
+		HealthMetricsURL: envOr("HEALTH_METRICS_URL", "http://loadgen.lab-loadgen.svc:8080/metrics"),
 
 		AllowPrivateTargets: os.Getenv("RELAY_ALLOW_PRIVATE_TARGETS") == "true",
 	}

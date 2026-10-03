@@ -58,12 +58,13 @@ func main() {
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelError),
 	}
 	log.Info("starting", "version", version, "port", cfg.Port, "participants", len(cfg.Participants),
-		"db", cfg.DBPath, "discovery_interval", cfg.DiscoveryInterval.String())
+		"db", cfg.DBPath, "discovery_interval", cfg.DiscoveryInterval.String(), "health_metrics_url", cfg.HealthMetricsURL)
 	if cfg.AllowPrivateTargets {
 		log.Warn("RELAY_ALLOW_PRIVATE_TARGETS=true: webhook URLs may use http:// and private addresses (local tests only)")
 	}
 
 	go newDiscovery(db, log, cfg.Participants).run(ctx, kube, cfg.DiscoveryInterval)
+	go api.health.run(ctx)
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)

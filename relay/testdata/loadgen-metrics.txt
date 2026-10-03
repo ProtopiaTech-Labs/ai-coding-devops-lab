@@ -1,0 +1,22 @@
+# HELP loadgen_requests_total POST /orders requests sent, by target and HTTP status (error = no response).
+# TYPE loadgen_requests_total counter
+loadgen_requests_total{target="https://p-test.lab.patoarchitekci.io",code="201"} 11
+loadgen_requests_total{target="https://p-test2.lab.patoarchitekci.io",code="201"} 11
+loadgen_requests_total{target="https://p01-demo.lab.patoarchitekci.io",code="201"} 11
+loadgen_requests_total{target="https://p02-demo.lab.patoarchitekci.io",code="201"} 11
+# HELP loadgen_request_duration_seconds Duration of POST /orders requests.
+# TYPE loadgen_request_duration_seconds summary
+loadgen_request_duration_seconds_sum{target="https://p-test.lab.patoarchitekci.io"} 0.074203487
+loadgen_request_duration_seconds_count{target="https://p-test.lab.patoarchitekci.io"} 11
+loadgen_request_duration_seconds_sum{target="https://p-test2.lab.patoarchitekci.io"} 0.074071462
+loadgen_request_duration_seconds_count{target="https://p-test2.lab.patoarchitekci.io"} 11
+loadgen_request_duration_seconds_sum{target="https://p01-demo.lab.patoarchitekci.io"} 0.073380853
+loadgen_request_duration_seconds_count{target="https://p01-demo.lab.patoarchitekci.io"} 11
+loadgen_request_duration_seconds_sum{target="https://p02-demo.lab.patoarchitekci.io"} 0.073967331
+loadgen_request_duration_seconds_count{target="https://p02-demo.lab.patoarchitekci.io"} 11
+# HELP loadgen_target_up 1 when the last POST /orders to the target returned 201, else 0.
+# TYPE loadgen_target_up gauge
+loadgen_target_up{target="https://p-test.lab.patoarchitekci.io"} 1
+loadgen_target_up{target="https://p-test2.lab.patoarchitekci.io"} 1
+loadgen_target_up{target="https://p01-demo.lab.patoarchitekci.io"} 1
+loadgen_target_up{target="https://p02-demo.lab.patoarchitekci.io"} 1

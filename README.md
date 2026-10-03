@@ -132,7 +132,7 @@ The channel's webhooks are listed once; missing `lab-<id>` ones are created, exi
 
 `relay/` is the lab relay (see `relay/README.md`). `.github/workflows/relay-build.yml` calls the same `image.yml` for paths `relay/**` (its own run numbers): `go vet` and `go test`, then `ghcr.io/protopiatech-labs/relay:1.0.<run_number>` for `linux/amd64` and `linux/arm64`, immutable tags, no `latest`. The package must be public (`https://github.com/orgs/ProtopiaTech-Labs/packages/container/relay/settings`).
 
-`deploy/relay/` runs it in `lab-relay`: ServiceAccount `relay` with a read-only ClusterRole (namespaces, deployments, pods), PVC `relay-data` (1Gi, `managed-csi`) on `/data`, one replica with `Recreate`, `fsGroup: 65532`, read-only root filesystem, Service and Ingress `relay.lab.patoarchitekci.io` with a Let's Encrypt certificate.
+`deploy/relay/` runs it in `lab-relay`: ServiceAccount `relay` with a read-only ClusterRole (namespaces, deployments, pods), PVC `relay-data` (1Gi, `managed-csi`) on `/data`, one replica with `Recreate`, `fsGroup: 65532`, read-only root filesystem, Service and Ingress `relay.lab.patoarchitekci.io` with a Let's Encrypt certificate. The App column comes from `http://loadgen.lab-loadgen.svc:8080/metrics` (plain HTTP inside the cluster; no RBAC, no NetworkPolicy in the lab).
 
 ```sh
 scripts/deploy-relay.sh --version 1.0.<N> [--dry-run]

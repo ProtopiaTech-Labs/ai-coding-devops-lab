@@ -2,8 +2,8 @@
 <div class="card">
   <header>
     <h2>Namespaces</h2>
-    <p>Namespaces with the label <code>lab.protopia.tech/target=true</code> and your prefix. Cluster state is refreshed every 15 s.</p>
+    <p>Namespaces with the label <code>lab.protopia.tech/target=true</code> and your prefix. Cluster state and App (the last order from loadgen: up = 201) refresh every 15 s; times are UTC.</p>
   </header>
-  <section>{{template "namespaces-table" .}}</section>
+  <section hx-get="/namespaces/table" hx-trigger="every 15s" hx-swap="innerHTML">{{template "namespaces-table" .}}</section>
 </div>
 {{end}}

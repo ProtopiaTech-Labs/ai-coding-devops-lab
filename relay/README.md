@@ -13,10 +13,13 @@ Lab relay (plan 002): config, SQLite schema, namespace discovery, the GitHub web
 | `PORT` | `8080` | |
 | `TARGET_DOMAIN` | `lab.patoarchitekci.io` | |
 | `DISCOVERY_INTERVAL` | `30s` | |
+| `HEALTH_METRICS_URL` | `http://loadgen.lab-loadgen.svc:8080/metrics` | Loadgen metrics for the App column. |
 | `KUBE_API`, `KUBE_TOKEN` | | Local runs only: API URL and optional bearer token instead of the in-cluster ServiceAccount. |
 | `RELAY_ALLOW_PRIVATE_TARGETS` | `false` | `true` lets webhook URLs use `http://` and loopback or private addresses. **Local tests only, never in the cluster.** |
 
 Discovery lists namespaces with label `lab.protopia.tech/target=true`. The owner is the name prefix before the first `-` (`p01-demo` → `p01`) when it is a known participant id; other names are logged once and ignored. A namespace that is no longer listed (label removed or namespace deleted) is marked disconnected; when it is listed again it reconnects. A failed list keeps the stored state.
+
+App health: every 15 s the relay GETs `HEALTH_METRICS_URL` (plain client, 5 s timeout; not the outbound guard, it is an internal Service) and reads only `loadgen_target_up{target="https://<ns>.<TARGET_DOMAIN>"}`. Per namespace it keeps up/down and the time of the last change in memory (no table; a restart refills it on the first scrape). `unknown` when loadgen reports nothing for the namespace, or when the last good scrape is older than 60 s. The last status code is not shown: the metrics carry counters per code, not the last one.
 
 The image runs as 65532 from `scratch`. A volume mounted on `/data` needs `securityContext.fsGroup: 65532` so the relay can write the database.
 
@@ -38,7 +41,7 @@ The image runs as 65532 from `scratch`. A volume mounted on `/data` needs `secur
 | Endpoint | Key | |
 |---|---|---|
 | `GET /api/me` | both | `{id, name, admin}` |
-| `GET /api/namespaces` | participant | own namespaces with connected state |
+| `GET /api/namespaces` | participant | own namespaces with connected state and `app: {state: up\|down\|unknown, since}` |
 | `GET /api/webhook` | participant | `{url, updated_at, secret}`: the shared secret, for copying |
 | `PUT /api/webhook-url` | participant | `{"url": "https://..."}`; `""` removes it |
 | `POST /api/webhook/test` | participant | `ping` signed with `X-Hub-Signature-256` to the own URL; returns the delivery |
@@ -54,8 +57,8 @@ The image runs as 65532 from `scratch`. A volume mounted on `/data` needs `secur
 `ui/templates` (`html/template`) and `ui/static` (Basecoat 1.0.2 `basecoat.cdn.min.css` and `js/all.min.js` saved as `basecoat.all.min.js`, htmx 4.0.0 `htmx.min.js`, from jsDelivr; `app.css`, `app.js`) are embedded with `go:embed`.
 
 - Login at `/login` with an API key. The key goes into cookie `relay_key` (HttpOnly, SameSite=Strict, 12 h; Secure unless `RELAY_ALLOW_PRIVATE_TARGETS=true`). `POST /logout` clears it.
-- Participant: `/namespaces` (connected state, shop version = image tag of Deployment `orders`, pod readiness; cluster reads cached 15 s), `/webhook` (shared secret, URL, test event, replay, delivery log polled every 5 s), `/journal`.
-- Admin: `/admin` (overview), `/admin/participants/{id}`, `/admin/journal?participant=&type=&status=`, `/admin/github` (`github_events`). A participant session on an admin page gets 403; the admin session on a participant page is sent to `/admin`.
+- Participant: `/namespaces` (connected state, App up/down/unknown since HH:MM UTC, shop version = image tag of Deployment `orders`, pod readiness; cluster reads cached 15 s; the table polls `/namespaces/table` every 15 s), `/webhook` (shared secret, URL, test event, replay, delivery log polled every 5 s), `/journal`.
+- Admin: `/admin` (overview, App as `N up / M down` per participant), `/admin/participants/{id}`, `/admin/journal?participant=&type=&status=`, `/admin/github` (`github_events`). A participant session on an admin page gets 403; the admin session on a participant page is sent to `/admin`.
 - POSTs go through `http.CrossOriginProtection` (Sec-Fetch-Site / Origin must be same-origin) on top of the SameSite=Strict cookie. Pages send a CSP without inline scripts.
 - The relay needs read on `deployments` and `pods` in the target namespaces for the version and pod columns; without it the row shows "cluster read failed".
 

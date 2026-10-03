@@ -67,7 +67,8 @@ func TestAPIParticipantData(t *testing.T) {
 		t.Errorf("me: %s", w.Body)
 	}
 	w = apiCall(t, s, "GET", "/api/namespaces", p01Key, "")
-	if !strings.Contains(w.Body.String(), "p01-demo") || strings.Contains(w.Body.String(), "p02") {
+	if !strings.Contains(w.Body.String(), "p01-demo") || strings.Contains(w.Body.String(), "p02") ||
+		!strings.Contains(w.Body.String(), `"app":{"state":"unknown"}`) {
 		t.Errorf("namespaces: %s", w.Body)
 	}
 

@@ -213,6 +213,7 @@ func TestUIRendersSampleData(t *testing.T) {
 		VALUES ('p01', 'github', 'deployment_status', 'gd-1', '{}', x'', 'https://p01.example/hook', 502, 31, ?)`, now)
 	exec(`INSERT INTO webhook_urls VALUES ('p01', 'https://p01.example/hook', ?)`, now)
 	exec(`INSERT INTO github_events (event, github_delivery, outcome, detail, created_at) VALUES ('ping', 'gd-x', 'bad_signature', 'signature mismatch from 1.2.3.4', ?)`, now)
+	e.s.health.apply(map[string]bool{"p01-demo": false, "p02-demo": true}, time.Now())
 
 	check := func(path, key string, want ...string) string {
 		t.Helper()
@@ -232,9 +233,15 @@ func TestUIRendersSampleData(t *testing.T) {
 		return b
 	}
 	b := check("/namespaces", p01Key, "p01 · Jan Kowalski", "p01-demo", "connected", "1.0.7", "2/3 ready",
-		"CrashLoopBackOff", "https://p01-demo.lab.patoarchitekci.io/version", "p01-old", "disconnected")
+		"CrashLoopBackOff", "https://p01-demo.lab.patoarchitekci.io/version", "p01-old", "disconnected",
+		`data-variant="destructive">down</span>`, "since "+time.Now().UTC().Format("15:04"),
+		`data-variant="outline">unknown</span>`, `hx-get="/namespaces/table" hx-trigger="every 15s"`)
 	if strings.Contains(b, "p02-demo") {
 		t.Error("p01 sees p02-demo")
+	}
+	b = check("/namespaces/table", p01Key, "p01-demo", `data-variant="destructive">down</span>`)
+	if strings.Contains(b, "<html") {
+		t.Error("table fragment is a full page")
 	}
 	check("/webhook", p01Key, testSecret, `data-copy="secret"`, "https://p01.example/hook", "gd-1", ">502<",
 		`hx-trigger="every 5s"`)
@@ -242,7 +249,8 @@ func TestUIRendersSampleData(t *testing.T) {
 	if strings.Contains(b, "scaled to zero") {
 		t.Error("p01 sees p02 journal")
 	}
-	b = check("/admin", adminKey, "Jan Kowalski", "Anna Nowak", "https://p01.example/hook", ">502<", "1h ago")
+	b = check("/admin", adminKey, "Jan Kowalski", "Anna Nowak", "https://p01.example/hook", ">502<", "1h ago",
+		`data-variant="destructive">0 up / 1 down`, `data-variant="primary">1 up / 0 down`)
 	if !strings.Contains(b, `data-variant="destructive">1h ago`) {
 		t.Error("stale journal entry not red")
 	}

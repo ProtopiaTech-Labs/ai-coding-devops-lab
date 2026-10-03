@@ -1,12 +1,13 @@
 {{define "namespaces-table"}}
 <div class="table-container">
 <table class="table">
-  <thead><tr><th>Namespace</th><th>State</th><th>Version</th><th>Pods</th><th>Link</th></tr></thead>
+  <thead><tr><th>Namespace</th><th>State</th><th>App</th><th>Version</th><th>Pods</th><th>Link</th></tr></thead>
   <tbody>
   {{range .Namespaces}}
     <tr>
       <td class="mono">{{.Name}}</td>
       <td>{{if .Connected}}<span class="badge" data-variant="primary">connected</span>{{else}}<span class="badge" data-variant="outline" title="since {{clock .DisconnectedAt}} UTC">disconnected</span>{{end}}</td>
+      <td class="nowrap"><span class="badge" data-variant="{{appVariant .App.State}}">{{.App.State}}</span>{{with .App.Since}} <span class="small muted">since {{hhmm .}}</span>{{end}}</td>
       {{if not .Connected}}<td class="muted">–</td><td class="muted">–</td>
       {{else if .Err}}<td colspan="2"><span class="badge" data-variant="destructive">cluster read failed</span> <span class="muted small">{{.Err}}</span></td>
       {{else}}
@@ -17,7 +18,7 @@
       <td><a class="link" href="https://{{.Name}}.{{$.Domain}}/version" target="_blank" rel="noopener">/version</a></td>
     </tr>
   {{else}}
-    <tr><td colspan="5" class="muted">No namespaces yet. Label one with <code>lab.protopia.tech/target=true</code>.</td></tr>
+    <tr><td colspan="6" class="muted">No namespaces yet. Label one with <code>lab.protopia.tech/target=true</code>.</td></tr>
   {{end}}
   </tbody>
 </table>

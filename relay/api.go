@@ -16,13 +16,14 @@ import (
 
 // server holds the HTTP handlers for the webhook and the API.
 type server struct {
-	cfg  *config
-	db   *sql.DB
-	log  *slog.Logger
-	out  *http.Client // forwards, test events, replays
-	byID map[string]participant
-	now  func() time.Time
-	wg   sync.WaitGroup
+	cfg    *config
+	db     *sql.DB
+	log    *slog.Logger
+	out    *http.Client // forwards, test events, replays
+	byID   map[string]participant
+	now    func() time.Time
+	wg     sync.WaitGroup
+	health *health
 }
 
 func newServer(cfg *config, db *sql.DB, log *slog.Logger) *server {
@@ -34,6 +35,7 @@ func newServer(cfg *config, db *sql.DB, log *slog.Logger) *server {
 		byID: map[string]participant{},
 		now:  time.Now,
 	}
+	s.health = newHealth(cfg.HealthMetricsURL, cfg.TargetDomain, log)
 	for _, p := range cfg.Participants {
 		s.byID[p.ID] = p
 	}
@@ -123,12 +125,13 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 }
 
 type namespaceRow struct {
-	Name           string `json:"name"`
-	Participant    string `json:"participant"`
-	Connected      bool   `json:"connected"`
-	FirstSeen      string `json:"first_seen"`
-	LastSeen       string `json:"last_seen"`
-	DisconnectedAt string `json:"disconnected_at,omitempty"`
+	Name           string    `json:"name"`
+	Participant    string    `json:"participant"`
+	Connected      bool      `json:"connected"`
+	FirstSeen      string    `json:"first_seen"`
+	LastSeen       string    `json:"last_seen"`
+	DisconnectedAt string    `json:"disconnected_at,omitempty"`
+	App            appHealth `json:"app"`
 }
 
 func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request, p participant) {
@@ -154,6 +157,7 @@ func (s *server) listNamespaces(ctx context.Context, pid string) ([]namespaceRow
 		if err := rows.Scan(&n.Name, &n.Participant, &n.Connected, &n.FirstSeen, &n.LastSeen, &n.DisconnectedAt); err != nil {
 			return nil, err
 		}
+		n.App = s.health.get(n.Name)
 		out = append(out, n)
 	}
 	return out, rows.Err()
@@ -454,6 +458,8 @@ type participantRow struct {
 	WebhookURL    string    `json:"webhook_url"`
 	LastDelivery  *delivery `json:"last_delivery"`
 	LastJournalAt string    `json:"last_journal_at"`
+	AppUp         int       `json:"-"` // UI only: connected namespaces up / down
+	AppDown       int       `json:"-"`
 }
 
 func (s *server) handleParticipants(w http.ResponseWriter, r *http.Request) {
@@ -482,6 +488,12 @@ func (s *server) participantsOverview(ctx context.Context) ([]participantRow, er
 				return nil, err
 			}
 			row.Namespaces = append(row.Namespaces, n)
+			switch s.health.get(n).State {
+			case "up":
+				row.AppUp++
+			case "down":
+				row.AppDown++
+			}
 		}
 		rows.Close()
 		if row.WebhookURL, _, err = s.webhookURL(ctx, p.ID); err != nil {
