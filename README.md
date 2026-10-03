@@ -44,3 +44,11 @@ docker compose down
 Every service has `mem_limit: 128m` (no swap), so `/chaos/oom` ends in an OOM kill of that container.
 
 The version comes from the build: `docker build --build-arg VERSION=1.0.7 app` sets `main.version`.
+
+## Build
+
+`.github/workflows/build.yml` runs on push to `main` (paths `app/**` and the workflow) and on `workflow_dispatch`. It runs `go vet` and `go test`, then pushes `ghcr.io/protopiatech-labs/shop:1.0.<run_number>` for `linux/amd64` and `linux/arm64`, with the git SHA in `org.opencontainers.image.revision`. There is no `latest` tag. Tags are immutable: if the tag exists, the job fails before the build, so a rerun never overwrites an image. The package must be public so the cluster and participants can pull without login.
+
+```sh
+docker buildx imagetools inspect ghcr.io/protopiatech-labs/shop:1.0.<N>
+```
