@@ -1,3 +1,5 @@
 .env
 deploy/.overlay.*/
 participants.txt
+relay/relay
+app/shop
