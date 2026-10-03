@@ -291,10 +291,10 @@ func TestWorkloadRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := k.workload(context.Background(), "p01-demo")
-	if want := (workload{Version: "1.0.2", Ready: 2, Desired: 3}); got != want {
+	if want := (workload{Version: "1.0.2", Ready: 3, Desired: 4}); got != want {
 		t.Errorf("p01-demo: %+v, want %+v", got, want)
 	}
-	if got := k.workload(context.Background(), "p01-empty"); got.Version != "" || got.Err != "" || got.Desired != 3 {
+	if got := k.workload(context.Background(), "p01-empty"); got.Version != "" || got.Err != "" || got.Desired != 4 {
 		t.Errorf("no deployment: %+v", got)
 	}
 	srv.Close()
