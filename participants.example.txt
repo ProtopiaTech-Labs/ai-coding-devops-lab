@@ -1,0 +1,4 @@
+# Lab participants: <id>,<display name>: <api key>
+# id is p + two digits; ids and keys must be unique. The real file is not in git.
+p01,Jan Kowalski: 00000000-0000-4000-8000-000000000001
+p02,Anna Nowak: 00000000-0000-4000-8000-000000000002

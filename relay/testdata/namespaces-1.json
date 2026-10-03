@@ -1,0 +1,89 @@
+{
+  "kind": "NamespaceList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "184213"
+  },
+  "items": [
+    {
+      "metadata": {
+        "name": "p-test",
+        "uid": "00000000-0000-4000-8000-118792940783",
+        "resourceVersion": "184213",
+        "creationTimestamp": "2026-10-03T16:12:05Z",
+        "labels": {
+          "kubernetes.io/metadata.name": "p-test",
+          "lab.protopia.tech/target": "true"
+        }
+      },
+      "spec": {
+        "finalizers": [
+          "kubernetes"
+        ]
+      },
+      "status": {
+        "phase": "Active"
+      }
+    },
+    {
+      "metadata": {
+        "name": "p01-demo",
+        "uid": "00000000-0000-4000-8000-444371129302",
+        "resourceVersion": "184213",
+        "creationTimestamp": "2026-10-03T16:12:05Z",
+        "labels": {
+          "kubernetes.io/metadata.name": "p01-demo",
+          "lab.protopia.tech/target": "true"
+        }
+      },
+      "spec": {
+        "finalizers": [
+          "kubernetes"
+        ]
+      },
+      "status": {
+        "phase": "Active"
+      }
+    },
+    {
+      "metadata": {
+        "name": "p02-demo",
+        "uid": "00000000-0000-4000-8000-218962450723",
+        "resourceVersion": "184213",
+        "creationTimestamp": "2026-10-03T16:12:05Z",
+        "labels": {
+          "kubernetes.io/metadata.name": "p02-demo",
+          "lab.protopia.tech/target": "true"
+        }
+      },
+      "spec": {
+        "finalizers": [
+          "kubernetes"
+        ]
+      },
+      "status": {
+        "phase": "Active"
+      }
+    },
+    {
+      "metadata": {
+        "name": "p99-x",
+        "uid": "00000000-0000-4000-8000-963721124346",
+        "resourceVersion": "184213",
+        "creationTimestamp": "2026-10-03T16:12:05Z",
+        "labels": {
+          "kubernetes.io/metadata.name": "p99-x",
+          "lab.protopia.tech/target": "true"
+        }
+      },
+      "spec": {
+        "finalizers": [
+          "kubernetes"
+        ]
+      },
+      "status": {
+        "phase": "Active"
+      }
+    }
+  ]
+}
