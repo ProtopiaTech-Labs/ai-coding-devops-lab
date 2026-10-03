@@ -1,4 +1,4 @@
-# Read-only: discovery lists namespaces; the namespace screen reads deployments and pods.
+# Read-only: discovery lists namespaces; the namespace screen reads deployments.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -14,9 +14,6 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "list"]
-  - apiGroups: [""]
-    resources: ["pods"]
     verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
