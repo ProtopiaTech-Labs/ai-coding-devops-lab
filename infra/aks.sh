@@ -65,11 +65,21 @@ fi
 AKS_ID=$(az aks show "${SUB[@]}" -g "$RESOURCE_GROUP" -n "$AKS_NAME" --query id -o tsv)
 AKS_PRINCIPAL_ID=$(az aks show "${SUB[@]}" -g "$RESOURCE_GROUP" -n "$AKS_NAME" --query identity.principalId -o tsv)
 
+# $@ az get-access-token arguments; prints the `oid` claim of the token
+token_oid() {
+  az account get-access-token "$@" --query accessToken -o tsv \
+    | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq -r .oid
+}
+
 # The owner is the account that owns the subscription: the `oid` of an az token for the subscription.
 # `az ad signed-in-user show` reads the default tenant, which can differ from the lab tenant.
-OWNER_ID=$(az account get-access-token "${SUB[@]}" --query accessToken -o tsv \
-  | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq -r .oid)
+OWNER_ID=$(token_oid "${SUB[@]}")
 ensure_role "$OWNER_ID" User "Azure Kubernetes Service RBAC Cluster Admin" "$AKS_ID"
+# kubelogin (azurecli, lab tenant) can pick a different account: the `oid` of its token for the AKS server app.
+KUBECTL_USER_ID=$(token_oid --tenant "$AZURE_TENANT_ID" --resource 6dae42f8-4368-4678-94ff-3960e28e3630)
+if [[ "$KUBECTL_USER_ID" != "$OWNER_ID" ]]; then
+  ensure_role "$KUBECTL_USER_ID" User "Azure Kubernetes Service RBAC Cluster Admin" "$AKS_ID"
+fi
 ensure_role "$AKS_PRINCIPAL_ID" ServicePrincipal "Network Contributor" "$RG_ID"
 
 if az identity show "${SUB[@]}" -g "$RESOURCE_GROUP" -n "$IDENTITY_NAME" -o none 2>/dev/null; then
