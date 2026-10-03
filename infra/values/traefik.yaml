@@ -1,0 +1,20 @@
+# Traefik behind the Azure Load Balancer on the static public IP in the main resource group.
+# ${...} placeholders are filled from .env by cluster.sh.
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+ports:
+  web:
+    # Let cert-manager's solver Ingress answer /.well-known/acme-challenge/ on HTTP; everything else redirects.
+    allowACMEByPass: true
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+service:
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-resource-group: ${RESOURCE_GROUP}
+    service.beta.kubernetes.io/azure-pip-name: ${PUBLIC_IP_NAME}
