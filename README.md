@@ -15,3 +15,32 @@ Instructor repo for the "AI Coding for DevOps/Ops" lab: the AKS cluster, the sho
 `infra/destroy.sh --cluster` deletes the AKS cluster only. `infra/destroy.sh --all` deletes the resource group after confirmation.
 
 Never commit IDs, IPs or secrets. They live in `.env` (gitignored) and in GitHub variables.
+
+## App
+
+`app/` is one Go module and one image. `ROLE` selects the service: `orders`, `inventory`, `payments` or `loadgen`. `PORT` defaults to `8080`. Logs are JSON on stdout, one line per request; a request the client gave up on is logged with `status: 499` and `canceled: true`.
+
+- `orders`: `POST /orders` calls `inventory` (`POST /reserve`) and `payments` (`POST /charge`) at `INVENTORY_URL` and `PAYMENTS_URL` with a 2 s timeout. It returns 201 with `versions` of all three services, 502 on an upstream error and 504 on an upstream timeout.
+- `orders`, `inventory`, `payments`: `GET /version`, `GET /healthz`, `GET /readyz`, and `POST /chaos/crash|oom|unready|slow`. `CHAOS=<mode>` applies a mode at start. `slow` delays every response by 5 s, except `/healthz`, `/readyz` and `/chaos/*`.
+- `loadgen`: every `LOADGEN_INTERVAL` (default `1s`) sends `POST /orders` to each target with a 5 s timeout and logs `target`, `status`, `latency_ms`, `versions` and `error`. Targets are `TARGETS` (comma-separated base URLs) or, when unset, `https://<namespace>.<TARGET_DOMAIN>` (default `lab.patoarchitekci.io`) for every namespace labelled `lab.protopia.tech/target=true`, listed every 30 s through the Kubernetes API with the pod's ServiceAccount. It serves `GET /healthz` only: no chaos endpoints, and no `/readyz` because nothing sends traffic to it.
+
+```sh
+cd app && go vet ./... && go test ./...
+scripts/scenario-local.sh   # builds, starts compose, waits for /readyz, checks every failure mode, then docker compose down
+```
+
+The scenario publishes `orders`, `inventory` and `payments` on `ORDERS_PORT`, `INVENTORY_PORT` and `PAYMENTS_PORT` (defaults 8080, 8081, 8082). To try it by hand, start the stack and wait for readiness before the first request:
+
+```sh
+docker compose up -d --build
+for p in "${ORDERS_PORT:-8080}" "${INVENTORY_PORT:-8081}" "${PAYMENTS_PORT:-8082}"; do
+  until curl -sf "localhost:$p/readyz" >/dev/null; do sleep 1; done
+done
+curl -X POST "localhost:${ORDERS_PORT:-8080}/orders"
+docker compose logs -f loadgen
+docker compose down
+```
+
+Every service has `mem_limit: 128m` (no swap), so `/chaos/oom` ends in an OOM kill of that container.
+
+The version comes from the build: `docker build --build-arg VERSION=1.0.7 app` sets `main.version`.

@@ -1,0 +1,66 @@
+{
+  "kind": "NamespaceList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "184213"
+  },
+  "items": [
+    {
+      "metadata": {
+        "name": "team-a",
+        "uid": "6f1d2c1e-6a0b-4d6e-9a43-3c1f5b0b6e11",
+        "resourceVersion": "183977",
+        "creationTimestamp": "2026-10-03T16:12:05Z",
+        "labels": {
+          "kubernetes.io/metadata.name": "team-a",
+          "lab.protopia.tech/target": "true"
+        },
+        "managedFields": [
+          {
+            "manager": "kubectl-create",
+            "operation": "Update",
+            "apiVersion": "v1",
+            "time": "2026-10-03T16:12:05Z",
+            "fieldsType": "FieldsV1",
+            "fieldsV1": {
+              "f:metadata": {
+                "f:labels": {
+                  ".": {},
+                  "f:kubernetes.io/metadata.name": {}
+                }
+              }
+            }
+          }
+        ]
+      },
+      "spec": {
+        "finalizers": [
+          "kubernetes"
+        ]
+      },
+      "status": {
+        "phase": "Active"
+      }
+    },
+    {
+      "metadata": {
+        "name": "team-b",
+        "uid": "0b8f5a7d-2e33-4b1c-8f0e-7d4a9e6c2a90",
+        "resourceVersion": "184101",
+        "creationTimestamp": "2026-10-03T16:14:41Z",
+        "labels": {
+          "kubernetes.io/metadata.name": "team-b",
+          "lab.protopia.tech/target": "true"
+        }
+      },
+      "spec": {
+        "finalizers": [
+          "kubernetes"
+        ]
+      },
+      "status": {
+        "phase": "Active"
+      }
+    }
+  ]
+}
