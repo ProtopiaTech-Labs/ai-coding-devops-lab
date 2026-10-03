@@ -12,12 +12,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 API=https://discord.com/api/v10
 
+# shellcheck source-path=SCRIPTDIR source=lib.sh
+source "$(dirname "$0")/lib.sh"
+
 usage() {
   echo "usage: $0 --participants <file> --out <file> [--delete]" >&2
   exit 2
 }
-die() { echo "discord-webhooks.sh: $*" >&2; exit 1; }
-log() { echo "==> $*"; }
 
 file="" out="" delete=false
 while [ $# -gt 0 ]; do
@@ -29,7 +30,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$file" ] || usage
-[ -f "$file" ] || die "no such file: $file"
 $delete || [ -n "$out" ] || usage
 
 if [ -f "$ROOT/.env" ]; then
@@ -41,16 +41,7 @@ fi
 : "${DISCORD_BOT_TOKEN:?DISCORD_BOT_TOKEN is not set}"
 : "${DISCORD_CHANNEL_ID:?DISCORD_CHANNEL_ID is not set}"
 
-# Ids from lines "<id>,<anything>" (the participants.sh format); comments and blanks skipped.
-ids=()
-while IFS= read -r line || [ -n "$line" ]; do
-  [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-  [[ "$line" =~ ^[[:space:]]*(p[0-9]{2})[[:space:]]*, ]] || die "bad line (expected '<pXX>,...'): ${line%%,*}"
-  id="${BASH_REMATCH[1]}"
-  for seen in "${ids[@]+"${ids[@]}"}"; do [ "$seen" != "$id" ] || die "duplicate id $id"; done
-  ids+=("$id")
-done < "$file"
-[ "${#ids[@]}" -gt 0 ] || die "no participants in $file"
+load_participants "$file"
 
 # api METHOD PATH [JSON]: body on stdout; retries on 429; dies with the Discord message otherwise.
 # The token goes through a curl config on stdin, not through argv.

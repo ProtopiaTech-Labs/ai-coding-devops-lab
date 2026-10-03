@@ -10,8 +10,10 @@
 # the pod and a second run with the same input changes nothing.
 set -euo pipefail
 
+# shellcheck source-path=SCRIPTDIR source=lib.sh
+source "$(dirname "$0")/lib.sh"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEPLOY_DIR="$ROOT/deploy"
 NS=lab-relay
 version="" dry_run=false
 while [ $# -gt 0 ]; do
@@ -21,19 +23,18 @@ while [ $# -gt 0 ]; do
     *) echo "usage: $0 --version 1.0.N [--dry-run]" >&2; exit 2 ;;
   esac
 done
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "deploy-relay.sh: --version 1.0.N is required" >&2; exit 1; }
+check_version "$version"
 
 # shellcheck source=/dev/null
 source "$ROOT/.env"
 : "${RELAY_ADMIN_KEY:?set in .env}" "${GITHUB_WEBHOOK_SECRET:?set in .env}"
 PARTICIPANTS="$ROOT/participants.txt"
-[ -s "$PARTICIPANTS" ] || { echo "deploy-relay.sh: $PARTICIPANTS is missing" >&2; exit 1; }
+[ -s "$PARTICIPANTS" ] || die "$PARTICIPANTS is missing"
 
 checksum=$( { cat "$PARTICIPANTS"; printf '%s\n%s\n' "$RELAY_ADMIN_KEY" "$GITHUB_WEBHOOK_SECRET"; } \
   | shasum -a 256 | cut -c1-16)
 
-tmp="$(mktemp -d "$DEPLOY_DIR/.overlay.XXXXXX")"
-trap 'rm -rf "$tmp"' EXIT
+new_overlay
 cat > "$tmp/kustomization.yaml" <<EOT
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -54,7 +55,7 @@ patches:
 EOT
 
 if $dry_run; then
-  kubectl kustomize "$tmp"
+  run_overlay true
   exit 0
 fi
 
@@ -67,5 +68,5 @@ kubectl -n "$NS" create secret generic relay-admin \
   --from-file=admin-key=<(printf '%s' "$RELAY_ADMIN_KEY") \
   --from-file=webhook-secret=<(printf '%s' "$GITHUB_WEBHOOK_SECRET") \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -k "$tmp"
+run_overlay false
 kubectl -n "$NS" rollout status deploy/relay --timeout=5m

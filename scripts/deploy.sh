@@ -9,10 +9,12 @@
 # manifests and does not contact the cluster.
 set -euo pipefail
 
+# shellcheck source-path=SCRIPTDIR source=lib.sh
+source "$(dirname "$0")/lib.sh"
+
 DOMAIN=lab.patoarchitekci.io
 LABEL_KEY=lab.protopia.tech/target
 IMAGE=ghcr.io/protopiatech-labs/shop
-DEPLOY_DIR="$(cd "$(dirname "$0")/../deploy" && pwd)"
 BREAKS="$(cd "$DEPLOY_DIR/components" && echo *)"
 
 usage() {
@@ -20,7 +22,6 @@ usage() {
   echo "break types: $BREAKS" >&2
   exit 2
 }
-die() { echo "deploy.sh: $*" >&2; exit 1; }
 
 ns="" version="" brk="" dry_run=false
 while [ $# -gt 0 ]; do
@@ -34,9 +35,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$ns" ] || usage
-[ -n "$version" ] || die "--version is required"
-
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid version '$version' (expected 1.0.N)"
+check_version "$version"
 [[ "$ns" =~ ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ ]] || die "invalid namespace '$ns' (not a DNS label)"
 case "$ns" in
   default|kube-*|lab-*|cert-manager|traefik) die "namespace '$ns' is reserved" ;;
@@ -54,10 +53,8 @@ if ! $dry_run; then
   fi
 fi
 
-# The overlay lives under deploy/ because kustomize accepts only relative paths.
 # The image tag is set one level below the component, so bad-image keeps its tag.
-tmp="$(mktemp -d "$DEPLOY_DIR/.overlay.XXXXXX")"
-trap 'rm -rf "$tmp"' EXIT
+new_overlay
 mkdir "$tmp/version"
 
 cat > "$tmp/version/kustomization.yaml" <<EOF
@@ -105,9 +102,5 @@ EOF
   fi
 } > "$tmp/kustomization.yaml"
 
-if $dry_run; then
-  kubectl kustomize "$tmp"
-else
-  echo "deploying $IMAGE:$version to $ns (break: ${brk:-none})"
-  kubectl apply -k "$tmp"
-fi
+$dry_run || echo "deploying $IMAGE:$version to $ns (break: ${brk:-none})"
+run_overlay "$dry_run"

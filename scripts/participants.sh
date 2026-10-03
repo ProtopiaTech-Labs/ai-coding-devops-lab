@@ -14,12 +14,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIR="$ROOT/deploy/participants"
 DOMAIN=lab.patoarchitekci.io
 
+# shellcheck source-path=SCRIPTDIR source=lib.sh
+source "$(dirname "$0")/lib.sh"
+
 usage() {
   echo "usage: $0 --participants <file> [--cards <dir>] [--vap-mode warn|deny] [--delete]" >&2
   exit 2
 }
-die() { echo "participants.sh: $*" >&2; exit 1; }
-log() { echo "==> $*"; }
 
 file="" cards="$ROOT/../training-ai-coding-devops/instructor/cards" mode=deny delete=false
 while [ $# -gt 0 ]; do
@@ -32,24 +33,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$file" ] || usage
-[ -f "$file" ] || die "no such file: $file"
 case "$mode" in
   warn) actions="[Warn, Audit]" ;;
   deny) actions="[Deny]" ;;
   *) die "--vap-mode must be warn or deny" ;;
 esac
 
-# Lines "<id>,<display name>: <api key>"; comments and blank lines are skipped.
-ids=() names=() keys=()
-while IFS= read -r line || [ -n "$line" ]; do
-  [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-  [[ "$line" =~ ^[[:space:]]*(p[0-9]{2}),[[:space:]]*(.+):[[:space:]]*([^[:space:]]+)[[:space:]]*$ ]] \
-    || die "bad line (expected '<pXX>,<name>: <key>'): ${line%%,*},..."
-  id="${BASH_REMATCH[1]}"
-  for seen in "${ids[@]+"${ids[@]}"}"; do [ "$seen" != "$id" ] || die "duplicate id $id"; done
-  ids+=("$id") names+=("${BASH_REMATCH[2]}") keys+=("${BASH_REMATCH[3]}")
-done < "$file"
-[ "${#ids[@]}" -gt 0 ] || die "no participants in $file"
+load_participants "$file"
 
 render() { local t; t="$(<"$DIR/participant.yaml")"; printf '%s\n' "${t//\$\{ID\}/$1}"; }
 
