@@ -1,0 +1,44 @@
+# The portal ServiceAccount of participant pXX (system:serviceaccount:pXX-portal:portal)
+# may write only namespaces pXX-* and the quotas and limit ranges inside them,
+# and never its own pXX-portal namespace or its quota. Nobody else is matched.
+# scripts/participants.sh sets validationActions: [Warn, Audit] (default) or [Deny].
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: lab-portal-prefix
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["namespaces", "resourcequotas", "limitranges"]
+        scope: "*"
+  matchConditions:
+    - name: portal-service-account
+      expression: "request.userInfo.username.matches('^system:serviceaccount:p[0-9]{2}-portal:portal$')"
+  variables:
+    # "system:serviceaccount:" is 22 characters, then the 3-character id pXX.
+    - name: prefix
+      expression: "request.userInfo.username.substring(22, 25)"
+    # The namespace written: its own name for a Namespace (object is null on DELETE),
+    # the request namespace for a quota or a limit range.
+    - name: target
+      expression: >-
+        request.resource.resource == 'namespaces'
+        ? (object != null ? object.metadata.name : oldObject.metadata.name)
+        : request.namespace
+  validations:
+    - expression: "variables.target.startsWith(variables.prefix + '-')"
+      messageExpression: "'portal of ' + variables.prefix + ' may only manage namespaces ' + variables.prefix + '-*, not ' + variables.target"
+    - expression: "variables.target != variables.prefix + '-portal'"
+      messageExpression: "'portal of ' + variables.prefix + ' may not change its own namespace ' + variables.target + ' or its quota'"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: lab-portal-prefix
+spec:
+  policyName: lab-portal-prefix
+  validationActions: [Warn, Audit]

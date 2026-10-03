@@ -1,0 +1,102 @@
+# Per-participant objects. scripts/participants.sh replaces ${ID} (p01, p02, ...).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${ID}-portal
+  labels:
+    lab.protopia.tech/participant: ${ID}
+---
+# The portal: one ClusterRole, writes limited to ${ID}-* by the admission policy.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portal
+  namespace: ${ID}-portal
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lab-portal-${ID}
+subjects:
+  - kind: ServiceAccount
+    name: portal
+    namespace: ${ID}-portal
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lab-portal
+---
+# The participant's GitHub deploy of the portal: admin in ${ID}-portal only.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployer
+  namespace: ${ID}-portal
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployer-admin
+  namespace: ${ID}-portal
+subjects:
+  - kind: ServiceAccount
+    name: deployer
+    namespace: ${ID}-portal
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: portal
+  namespace: ${ID}-portal
+spec:
+  hard:
+    requests.cpu: 300m
+    requests.memory: 512Mi
+    limits.memory: 1Gi
+    pods: "6"
+---
+# Defaults for containers without resources, which the quota would otherwise reject.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: portal
+  namespace: ${ID}-portal
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 50m
+        memory: 64Mi
+      default:
+        memory: 128Mi
+---
+# Long-lived tokens for the kubeconfigs on the participant's card.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: portal-token
+  namespace: ${ID}-portal
+  annotations:
+    kubernetes.io/service-account.name: portal
+type: kubernetes.io/service-account-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: deployer-token
+  namespace: ${ID}-portal
+  annotations:
+    kubernetes.io/service-account.name: deployer
+type: kubernetes.io/service-account-token
+---
+# Registered from block 1: same object as scripts/deploy.sh writes, so both apply cleanly.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${ID}-demo
+  labels:
+    lab.protopia.tech/target: "true"

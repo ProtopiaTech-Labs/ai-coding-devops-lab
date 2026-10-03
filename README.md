@@ -117,3 +117,20 @@ nohup scripts/chaos-runner.sh > chaos.log 2>&1 &          # in the background; s
 | `--dry-run` | off | print the choices only: no workflow run, no waiting |
 
 Versions come from the public registry API with an anonymous pull token (`https://ghcr.io/token`, then `/v2/protopiatech-labs/shop/tags/list`), because the GitHub packages API needs the `read:packages` scope. With no registered namespace, the runner prints a line and waits for the next interval; that iteration still counts. Dry-run lines carry the iteration number instead of the time, so two runs with the same seed print identical output.
+
+## Participants
+
+`scripts/participants.sh` gives every participant access to the cluster. It reads a participants file, one line per participant, `<id>,<display name>: <relay API key>` (ids `p01`..`p99`; `#` comments and blank lines are skipped). The real file is not in git; see `participants.example.txt`.
+
+```sh
+scripts/participants.sh --participants participants.txt [--cards <dir>] [--vap-mode warn|deny]
+scripts/participants.sh --participants participants.txt --delete   # asks for "yes"
+```
+
+`deploy/participants/` holds what it applies:
+
+- `clusterrole-portal.yaml`: ClusterRole `lab-portal`: namespaces (create, get, list, watch, patch, update, delete), `resourcequotas` and `limitranges` (create, update, patch, get, list, delete), read on `deployments`, `replicasets`, `pods` and `events`. No Secrets, no ConfigMaps.
+- `vap.yaml`: ValidatingAdmissionPolicy `lab-portal-prefix` and its binding. It matches only `system:serviceaccount:pXX-portal:portal` and allows writes to namespaces, quotas and limit ranges only in `pXX-*`, never in its own `pXX-portal`. `--vap-mode warn` (default) sets `validationActions: [Warn, Audit]`, `--vap-mode deny` sets `[Deny]`. The instructor, `deploy.yml`, loadgen and the relay are not matched. In `warn` mode the portal can still delete any namespace it can reach, so switch to `deny` before handing out cards.
+- `participant.yaml`: the template for one id (`${ID}`): namespace `pXX-portal` (label `lab.protopia.tech/participant=pXX`), ServiceAccount `portal` bound to `lab-portal`, ServiceAccount `deployer` with `admin` in `pXX-portal` only, ResourceQuota `portal` (`requests.cpu` 300m, `requests.memory` 512Mi, `limits.memory` 1Gi, `pods` 6), LimitRange `portal` (defaults for containers without resources), long-lived token Secrets for both accounts, and namespace `pXX-demo` labelled `lab.protopia.tech/target=true`, so `deploy.sh` accepts it.
+
+Everything goes through `kubectl apply`, so a second run prints `unchanged`. For each id the script writes `<cards>/<id>/`: `portal.kubeconfig`, `deployer.kubeconfig` (server and CA from the current context, token from the Secret) and `card.md` (name, relay API key, hosts `pXX.lab.patoarchitekci.io` and `pXX-demo.lab.patoarchitekci.io`, namespaces). The default `--cards` is `../training-ai-coding-devops/instructor/cards` (the private training repo). Tokens are never printed. `--delete` removes `pXX-portal`, `pXX-demo` and the binding of each listed id; namespaces the portal created (`pXX-*`) and the cards stay.
