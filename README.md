@@ -5,7 +5,7 @@ Instructor repo for the "AI Coding for DevOps/Ops" lab: the AKS cluster, the sho
 ## Lab cluster
 
 1. Copy `.env.example` to `.env` and fill in the subscription and tenant IDs.
-2. Run `infra/aks.sh`. It creates the resource group, the public IP, AKS, the GitHub Actions identity and the GitHub variables.
+2. Run `infra/aks.sh`. It creates the resource group, the public IP, AKS, the GitHub Actions identity and the GitHub variables (Azure ids, `RESOURCE_GROUP`, `AKS_NAME`).
 3. Run the `oidc-check` workflow: `gh workflow run oidc-check.yml`. Copy the printed `sub` into `GHA_OIDC_SUBJECT` in `.env`.
 4. Run `infra/aks.sh` again. It creates the federated credential.
 5. Check the login: `gh workflow run oidc-check.yml -f login=true`.
@@ -47,7 +47,7 @@ The version comes from the build: `docker build --build-arg VERSION=1.0.7 app` s
 
 ## Build
 
-`.github/workflows/build.yml` runs on push to `main` (paths `app/**` and the workflow) and on `workflow_dispatch`. It runs `go vet` and `go test`, then pushes `ghcr.io/protopiatech-labs/shop:1.0.<run_number>` for `linux/amd64` and `linux/arm64`, with the git SHA in `org.opencontainers.image.revision`. There is no `latest` tag. Tags are immutable: if the tag exists, the job fails before the build, so a rerun never overwrites an image. The package must be public so the cluster and participants can pull without login.
+`.github/workflows/build.yml` (a thin caller of the reusable `image.yml`, inputs `dir` and `image`) runs on push to `main` (paths `app/**` and the workflow) and on `workflow_dispatch`. It runs `go vet` and `go test`, then pushes `ghcr.io/protopiatech-labs/shop:1.0.<run_number>` for `linux/amd64` and `linux/arm64`, with the git SHA in `org.opencontainers.image.revision`. There is no `latest` tag. Tags are immutable: if the tag exists, the job fails before the build, so a rerun never overwrites an image. The package must be public so the cluster and participants can pull without login.
 
 ```sh
 docker buildx imagetools inspect ghcr.io/protopiatech-labs/shop:1.0.<N>
@@ -91,7 +91,7 @@ scripts/deploy-loadgen.sh --version 1.0.N [--dry-run]
 `.github/workflows/deploy.yml` runs `scripts/deploy.sh` from GitHub Actions, so every deploy is a GitHub deployment in environment `lab` and sends `deployment_status` events:
 
 ```sh
-gh workflow run deploy.yml -f namespace=<namespace> -f version=1.0.N -f break=none   # or one of the --break types
+gh workflow run deploy.yml -f namespace=<namespace> -f version=1.0.N -f break=none   # break: none or a deploy/components name
 ```
 
 It logs in with the managed identity (OIDC, `azure/login`), gets the AKS kubeconfig and converts it with `kubelogin -l azurecli`, then runs `deploy.sh`. It builds no image. Runs for the same namespace queue (`concurrency: deploy-<namespace>`), they never cancel each other. With `break=none` the job waits for `kubectl rollout status` of `orders`, `inventory` and `payments` (90 s each) and fails if the shop does not become ready. With a breakage it does not wait: unhealthy pods are the expected result, so the job succeeds once `kubectl apply` succeeds. A namespace that `deploy.sh` refuses fails the job.
@@ -112,7 +112,7 @@ scripts/participants.sh --participants participants.txt --delete   # asks for "y
 `deploy/participants/` holds what it applies:
 
 - `clusterrole-portal.yaml`: ClusterRole `lab-portal`: namespaces (create, get, list, watch, patch, update, delete), `resourcequotas` and `limitranges` (create, update, patch, get, list, delete), read on `deployments`, `replicasets`, `pods` and `events`. No Secrets, no ConfigMaps.
-- `vap.yaml`: ValidatingAdmissionPolicy `lab-portal-prefix` and its binding. It matches only `system:serviceaccount:pXX-portal:portal` and allows writes to namespaces, quotas and limit ranges only in `pXX-*`, never in its own `pXX-portal`. `--vap-mode deny` (default) sets `validationActions: [Deny]`, `--vap-mode warn` (testing only) sets `[Warn, Audit]`. The instructor, `deploy.yml`, loadgen and the relay are not matched. In `warn` mode the portal can still delete any namespace it can reach.
+- `vap.yaml`: ValidatingAdmissionPolicy `lab-portal-prefix` and its binding. It matches only `system:serviceaccount:pXX-portal:portal` and allows writes to namespaces, quotas and limit ranges only in `pXX-*`, never in its own `pXX-portal`. The file is committed with `validationActions: [Deny]`; `--vap-mode warn` (testing only) applies `[Warn, Audit]` instead. The instructor, `deploy.yml`, loadgen and the relay are not matched. In `warn` mode the portal can still delete any namespace it can reach.
 - `participant.yaml`: the template for one id (`${ID}`): namespace `pXX-portal` (label `lab.protopia.tech/participant=pXX`), ServiceAccount `portal` bound to `lab-portal`, ServiceAccount `deployer` with `admin` in `pXX-portal` only, ResourceQuota `portal` (`requests.cpu` 300m, `requests.memory` 512Mi, `limits.memory` 1Gi, `pods` 6), LimitRange `portal` (defaults for containers without resources), long-lived token Secrets for both accounts, and namespace `pXX-demo` labelled `lab.protopia.tech/target=true`, so `deploy.sh` accepts it.
 
 Everything goes through `kubectl apply`, so a second run prints `unchanged`. For each id the script writes `<cards>/<id>/`: `portal.kubeconfig`, `deployer.kubeconfig` (server and CA from the current context, token from the Secret) and `card.md` (name, relay API key, hosts `pXX.lab.patoarchitekci.io` and `pXX-demo.lab.patoarchitekci.io`, namespaces). The default `--cards` is `../training-ai-coding-devops/instructor/cards` (the private training repo). Tokens are never printed. `--delete` removes `pXX-portal`, `pXX-demo` and the binding of each listed id; namespaces the portal created (`pXX-*`) and the cards stay.
@@ -130,7 +130,7 @@ The channel's webhooks are listed once; missing `lab-<id>` ones are created, exi
 
 ## Relay
 
-`relay/` is the lab relay (see `relay/README.md`). `.github/workflows/relay-build.yml` follows the rules of `build.yml` for paths `relay/**`: `go vet` and `go test`, then `ghcr.io/protopiatech-labs/relay:1.0.<run_number>` for `linux/amd64` and `linux/arm64`, immutable tags, no `latest`. The package must be public (`https://github.com/orgs/ProtopiaTech-Labs/packages/container/relay/settings`).
+`relay/` is the lab relay (see `relay/README.md`). `.github/workflows/relay-build.yml` calls the same `image.yml` for paths `relay/**` (its own run numbers): `go vet` and `go test`, then `ghcr.io/protopiatech-labs/relay:1.0.<run_number>` for `linux/amd64` and `linux/arm64`, immutable tags, no `latest`. The package must be public (`https://github.com/orgs/ProtopiaTech-Labs/packages/container/relay/settings`).
 
 `deploy/relay/` runs it in `lab-relay`: ServiceAccount `relay` with a read-only ClusterRole (namespaces, deployments, pods), PVC `relay-data` (1Gi, `managed-csi`) on `/data`, one replica with `Recreate`, `fsGroup: 65532`, read-only root filesystem, Service and Ingress `relay.lab.patoarchitekci.io` with a Let's Encrypt certificate.
 

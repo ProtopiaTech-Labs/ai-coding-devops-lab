@@ -21,9 +21,7 @@ jobs:
         run: |
           token=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)
-          payload=$(echo "$token" | cut -d. -f2 | tr '_-' '/+')
-          while (( ${#payload} % 4 )); do payload="$payload="; done
-          echo "sub: $(echo "$payload" | base64 -d | jq -r .sub)"
+          echo "sub: $(echo "$token" | jq -R -r 'split(".")[1] | gsub("-";"+") | gsub("_";"/") | @base64d | fromjson | .sub')"
 
       - name: Azure login
         if: inputs.login

@@ -14,19 +14,9 @@ on:
         type: string
         required: true
       break:
-        description: Breakage to apply
-        type: choice
+        description: Breakage to apply (none, or a directory of deploy/components)
+        type: string
         default: none
-        options:
-          - none
-          - bad-image
-          - crash
-          - dependency-down
-          - missing-config
-          - oom
-          - quota
-          - slow
-          - unready
 
 permissions:
   id-token: write
@@ -35,10 +25,6 @@ permissions:
 concurrency:
   group: deploy-${{ inputs.namespace }}
   cancel-in-progress: false
-
-env:
-  RESOURCE_GROUP: rg-aicodingdevops-lab-sdc-001
-  AKS_NAME: aks-aicodingdevops-lab-sdc-001
 
 jobs:
   deploy:
@@ -65,6 +51,9 @@ jobs:
           kubelogin-version: v0.2.20
 
       - name: Get AKS credentials
+        env:
+          RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}
+          AKS_NAME: ${{ vars.AKS_NAME }}
         run: |
           az aks get-credentials -g "$RESOURCE_GROUP" -n "$AKS_NAME" --overwrite-existing --only-show-errors
           kubelogin convert-kubeconfig -l azurecli
