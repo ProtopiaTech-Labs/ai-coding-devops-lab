@@ -7,6 +7,7 @@
 #
 # Idempotent: everything goes through `kubectl apply`, a second run prints `unchanged`.
 # Tokens are written only into the card files, never to stdout.
+# --vap-mode defaults to deny. warn is for testing only: cards are written in deny mode only.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,7 +21,7 @@ usage() {
 die() { echo "participants.sh: $*" >&2; exit 1; }
 log() { echo "==> $*"; }
 
-file="" cards="$ROOT/../training-ai-coding-devops/instructor/cards" mode=warn delete=false
+file="" cards="$ROOT/../training-ai-coding-devops/instructor/cards" mode=deny delete=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --participants) [ $# -ge 2 ] || usage; file="$2"; shift 2 ;;
@@ -103,11 +104,16 @@ EOF
   )
 }
 
+if [ "$mode" != deny ]; then
+  echo "WARNING: --vap-mode $mode: cards are only written in deny mode, skipping cards" >&2
+fi
+
 for i in "${!ids[@]}"; do
   id="${ids[$i]}" name="${names[$i]}" key="${keys[$i]}"
   log "$id: apply"
   render "$id" | kubectl apply -f -
 
+  [ "$mode" = deny ] || continue
   out="$cards/$id"
   (umask 077; mkdir -p "$out")
   write_kubeconfig "$id" portal "$out/portal.kubeconfig"
