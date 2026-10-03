@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func newUIEnv(t *testing.T) *uiEnv {
 	t.Helper()
 	s := newTestServer(t)
 	u, err := newUI(s, func(_ context.Context, ns string) workload {
-		return workload{Version: "1.0.7", Ready: 2, Total: 3, Problem: "CrashLoopBackOff"}
+		return workload{Version: "1.0.7", Ready: 2, Desired: 3}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +234,7 @@ func TestUIRendersSampleData(t *testing.T) {
 		return b
 	}
 	b := check("/namespaces", p01Key, "p01 · Jan Kowalski", "p01-demo", "connected", "1.0.7", "2/3 ready",
-		"CrashLoopBackOff", "https://p01-demo.lab.patoarchitekci.io/version", "p01-old", "disconnected",
+		"2/3 ready", "https://p01-demo.lab.patoarchitekci.io/version", "p01-old", "disconnected",
 		`data-variant="destructive">down</span>`, "since "+time.Now().UTC().Format("15:04"),
 		`data-variant="outline">unknown</span>`, `hx-get="/namespaces/table" hx-trigger="every 15s"`)
 	if strings.Contains(b, "p02-demo") {
@@ -269,17 +270,16 @@ func TestUIRendersSampleData(t *testing.T) {
 
 func TestWorkloadRead(t *testing.T) {
 	deploy := `{"spec":{"template":{"spec":{"containers":[{"image":"ghcr.io/protopiatech-labs/shop:1.0.2"}]}}}}`
-	pods := `{"items":[
-		{"status":{"phase":"Running","conditions":[{"type":"Ready","status":"True"}]}},
-		{"status":{"phase":"Running","conditions":[{"type":"Ready","status":"False"}],
-		  "containerStatuses":[{"state":{"waiting":{"reason":"CrashLoopBackOff"}}}]}},
-		{"status":{"phase":"Succeeded"}}]}`
+	deps, err := os.ReadFile("testdata/deployments_p01-demo.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/apis/apps/v1/namespaces/p01-demo/deployments/orders":
 			w.Write([]byte(deploy))
-		case "/api/v1/namespaces/p01-demo/pods", "/api/v1/namespaces/p01-empty/pods":
-			w.Write([]byte(pods))
+		case "/apis/apps/v1/namespaces/p01-demo/deployments", "/apis/apps/v1/namespaces/p01-empty/deployments":
+			w.Write(deps)
 		default:
 			http.NotFound(w, r)
 		}
@@ -291,10 +291,10 @@ func TestWorkloadRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := k.workload(context.Background(), "p01-demo")
-	if want := (workload{Version: "1.0.2", Ready: 1, Total: 2, Problem: "CrashLoopBackOff"}); got != want {
+	if want := (workload{Version: "1.0.2", Ready: 2, Desired: 3}); got != want {
 		t.Errorf("p01-demo: %+v, want %+v", got, want)
 	}
-	if got := k.workload(context.Background(), "p01-empty"); got.Version != "" || got.Err != "" || got.Total != 2 {
+	if got := k.workload(context.Background(), "p01-empty"); got.Version != "" || got.Err != "" || got.Desired != 3 {
 		t.Errorf("no deployment: %+v", got)
 	}
 	srv.Close()

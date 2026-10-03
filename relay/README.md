@@ -60,7 +60,7 @@ The image runs as 65532 from `scratch`. A volume mounted on `/data` needs `secur
 - Participant: `/namespaces` (connected state, App up/down/unknown since HH:MM UTC, shop version = image tag of Deployment `orders`, pod readiness; cluster reads cached 15 s; the table polls `/namespaces/table` every 15 s), `/webhook` (shared secret, URL, test event, replay, delivery log polled every 5 s), `/journal`.
 - Admin: `/admin` (overview, App as `N up / M down` per participant), `/admin/participants/{id}`, `/admin/journal?participant=&type=&status=`, `/admin/github` (`github_events`). A participant session on an admin page gets 403; the admin session on a participant page is sent to `/admin`.
 - POSTs go through `http.CrossOriginProtection` (Sec-Fetch-Site / Origin must be same-origin) on top of the SameSite=Strict cookie. Pages send a CSP without inline scripts.
-- The relay needs read on `deployments` and `pods` in the target namespaces for the version and pod columns; without it the row shows "cluster read failed".
+- The relay needs read on `deployments` and `pods` in the target namespaces for the version and pods columns (ready/desired replicas); without it the row shows "cluster read failed".
 
 ## Local run against the cluster
 

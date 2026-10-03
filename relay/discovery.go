@@ -271,13 +271,12 @@ const shopDeployment = "orders"
 // workload is what the namespace screen shows from the cluster.
 type workload struct {
 	Version string // image tag of the shop Deployment; "" when it does not exist
-	Ready   int    // pods with condition Ready
-	Total   int    // pods that are not Succeeded or Failed
-	Problem string // first waiting or terminated reason of a pod that is not ready
+	Ready   int    // sum of status.readyReplicas over all Deployments
+	Desired int    // sum of spec.replicas over all Deployments
 	Err     string // the read failed
 }
 
-// workload reads the shop Deployment's image tag and the pod readiness of ns.
+// workload reads the shop Deployment's image tag and the replica counts of ns.
 func (k *kubeClient) workload(ctx context.Context, ns string) workload {
 	var w workload
 	esc := url.PathEscape(ns)
@@ -291,11 +290,14 @@ func (k *kubeClient) workload(ctx context.Context, ns string) workload {
 	default:
 		w.Version = parseDeploymentVersion(body)
 	}
-	if body, err = k.get(ctx, "/api/v1/namespaces/"+esc+"/pods"); err != nil {
-		w.Err = "list pods: " + err.Error()
+	if body, err = k.get(ctx, "/apis/apps/v1/namespaces/"+esc+"/deployments"); err != nil {
+		w.Err = "list deployments: " + err.Error()
 		return w
 	}
-	w.Ready, w.Total, w.Problem = parsePodList(body)
+	var ok bool
+	if w.Ready, w.Desired, ok = parseReplicas(body); !ok {
+		w.Err = "unreadable deployment list"
+	}
 	return w
 }
 
@@ -323,58 +325,31 @@ func parseDeploymentVersion(body []byte) string {
 	return "latest"
 }
 
-// parsePodList counts ready pods among the running ones and returns the first
-// reason a pod is not ready (CrashLoopBackOff, ImagePullBackOff, Pending, ...).
-func parsePodList(body []byte) (ready, total int, problem string) {
+// parseReplicas sums status.readyReplicas and spec.replicas over a Deployment
+// list. A Deployment without spec.replicas has the API default of 1.
+func parseReplicas(body []byte) (ready, desired int, ok bool) {
 	var list struct {
 		Items []struct {
+			Spec struct {
+				Replicas *int `json:"replicas"`
+			} `json:"spec"`
 			Status struct {
-				Phase      string `json:"phase"`
-				Conditions []struct {
-					Type   string `json:"type"`
-					Status string `json:"status"`
-				} `json:"conditions"`
-				ContainerStatuses []struct {
-					State map[string]struct {
-						Reason string `json:"reason"`
-					} `json:"state"`
-				} `json:"containerStatuses"`
+				ReadyReplicas int `json:"readyReplicas"`
 			} `json:"status"`
 		} `json:"items"`
 	}
 	if json.Unmarshal(body, &list) != nil {
-		return 0, 0, "unreadable pod list"
+		return 0, 0, false
 	}
-	for _, p := range list.Items {
-		if p.Status.Phase == "Succeeded" || p.Status.Phase == "Failed" {
-			continue
+	for _, d := range list.Items {
+		want := 1
+		if d.Spec.Replicas != nil {
+			want = *d.Spec.Replicas
 		}
-		total++
-		isReady := false
-		for _, c := range p.Status.Conditions {
-			if c.Type == "Ready" && c.Status == "True" {
-				isReady = true
-			}
-		}
-		if isReady {
-			ready++
-			continue
-		}
-		if problem != "" {
-			continue
-		}
-		for _, cs := range p.Status.ContainerStatuses {
-			for _, st := range []string{"waiting", "terminated"} {
-				if r := cs.State[st].Reason; r != "" && problem == "" {
-					problem = r
-				}
-			}
-		}
-		if problem == "" {
-			problem = p.Status.Phase
-		}
+		desired += want
+		ready += d.Status.ReadyReplicas
 	}
-	return ready, total, problem
+	return ready, desired, true
 }
 
 // workloadCache keeps workload reads for ttl, so page loads and polls do not

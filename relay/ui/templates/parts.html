@@ -12,8 +12,7 @@
       {{else if .Err}}<td colspan="2"><span class="badge" data-variant="destructive">cluster read failed</span> <span class="muted small">{{.Err}}</span></td>
       {{else}}
       <td class="mono">{{if .Version}}{{.Version}}{{else}}<span class="muted">no orders deployment</span>{{end}}</td>
-      <td>{{if .Total}}<span class="badge" data-variant="{{if eq .Ready .Total}}primary{{else}}destructive{{end}}">{{.Ready}}/{{.Total}} ready</span>{{else}}<span class="muted">no pods</span>{{end}}
-        {{with .Problem}}<span class="badge" data-variant="destructive">{{.}}</span>{{end}}</td>
+      <td>{{if .Desired}}<span class="badge" data-variant="{{if eq .Ready .Desired}}primary{{else}}destructive{{end}}">{{.Ready}}/{{.Desired}} ready</span>{{else}}<span class="muted">no replicas</span>{{end}}</td>
       {{end}}
       <td><a class="link" href="https://{{.Name}}.{{$.Domain}}/version" target="_blank" rel="noopener">/version</a></td>
     </tr>
