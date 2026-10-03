@@ -46,7 +46,7 @@ The image runs as 65532 from `scratch`. A volume mounted on `/data` needs `secur
 | `GET /api/deliveries` | participant | newest 50, without headers and body |
 | `GET /api/journal?since=&participant=` | both | participant: own entries (`participant` of someone else → 403); admin: all or one. `since` is RFC 3339 and matches `updated_at`, so a poller also sees patched entries. Newest first, max 500. |
 | `GET /api/participants` | admin | id, name, connected namespaces, webhook URL, last delivery, last journal entry time |
-| `POST /api/journal` | admin | `{namespace, type: deploy\|drift, message, command, undo, status: open\|fixed}`; status defaults to `open`; the owner comes from the namespace prefix |
+| `POST /api/journal` | admin | `{namespace, type: deploy\|agent\|manual, message, command, undo, status: open\|fixed}`; status defaults to `open`; the owner comes from the namespace prefix. Types by source: `deploy` (GitHub webhook), `agent` (chaos subagent), `manual` (instructor, e.g. `drift.sh` by hand). The legacy `drift` is still accepted and stored as `manual`. |
 | `PATCH /api/journal/{id}` | admin | `{status, message}` |
 
 ## UI

@@ -48,8 +48,8 @@ var migrations = []string{
 		id             INTEGER PRIMARY KEY AUTOINCREMENT,
 		participant_id TEXT NOT NULL,
 		namespace      TEXT NOT NULL,
-		type           TEXT NOT NULL,  -- deploy, drift
-		status         TEXT NOT NULL,  -- deploy: the deployment state; drift: open, fixed
+		type           TEXT NOT NULL,  -- deploy, agent, manual
+		status         TEXT NOT NULL,  -- deploy: the deployment state; agent/manual: open, fixed
 		version        TEXT,
 		run_url        TEXT,
 		run_name       TEXT,
@@ -77,6 +77,9 @@ var migrations = []string{
 		detail          TEXT,
 		created_at      TEXT NOT NULL
 	);`,
+
+	// Journal types by source: deploy, agent, manual (was drift).
+	`UPDATE journal SET type = 'manual' WHERE type = 'drift';`,
 }
 
 // openDB opens (or creates) the SQLite file and applies pending migrations.

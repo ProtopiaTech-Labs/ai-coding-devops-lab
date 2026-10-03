@@ -339,7 +339,7 @@ func (s *server) handleJournalList(w http.ResponseWriter, r *http.Request) {
 type journalFilter struct {
 	Participant string
 	Since       time.Time // updated_at >= Since
-	Type        string    // deploy, drift
+	Type        string    // deploy, agent, manual
 	Status      string
 }
 
@@ -391,13 +391,16 @@ func (s *server) handleJournalCreate(w http.ResponseWriter, r *http.Request) {
 	if in.Status == "" {
 		in.Status = "open"
 	}
+	if in.Type == "drift" { // legacy name, kept for older clients
+		in.Type = "manual"
+	}
 	owner := s.ownerOf(in.Namespace)
 	switch {
 	case owner == "":
 		writeError(w, http.StatusBadRequest, "namespace must start with a known participant id")
 		return
-	case in.Type != "deploy" && in.Type != "drift":
-		writeError(w, http.StatusBadRequest, "type must be deploy or drift")
+	case in.Type != "deploy" && in.Type != "agent" && in.Type != "manual":
+		writeError(w, http.StatusBadRequest, "type must be deploy, agent or manual")
 		return
 	case in.Status != "open" && in.Status != "fixed":
 		writeError(w, http.StatusBadRequest, "status must be open or fixed")

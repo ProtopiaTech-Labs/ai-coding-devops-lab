@@ -100,6 +100,16 @@ func newUI(s *server, workloadOf func(context.Context, string) workload) (*ui, e
 				return "secondary"
 			}
 		},
+		"typeVariant": func(t string) string {
+			switch t {
+			case "agent":
+				return "destructive"
+			case "manual":
+				return "secondary"
+			default:
+				return "outline"
+			}
+		},
 		"statusVariant": func(st string) string {
 			switch st {
 			case "success", "fixed":

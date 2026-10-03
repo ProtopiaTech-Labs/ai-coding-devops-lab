@@ -122,12 +122,15 @@ func TestAPIJournal(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &e)
 		return e
 	}
-	e1 := create(`{"namespace":"p01-demo","type":"drift","message":"scaled orders to 0","command":"kubectl -n p01-demo scale deploy/orders --replicas=0","undo":"kubectl -n p01-demo scale deploy/orders --replicas=1"}`)
+	e1 := create(`{"namespace":"p01-demo","type":"agent","message":"scaled orders to 0","command":"kubectl -n p01-demo scale deploy/orders --replicas=0","undo":"kubectl -n p01-demo scale deploy/orders --replicas=1"}`)
 	if e1.Participant != "p01" || e1.Status != "open" || e1.Undo == "" {
 		t.Errorf("entry %+v", e1)
 	}
+	if e1.Type != "agent" {
+		t.Errorf("type %q", e1.Type)
+	}
 	clock = base.Add(time.Hour)
-	e2 := create(`{"namespace":"p02-demo","type":"drift","message":"x","status":"open"}`)
+	e2 := create(`{"namespace":"p02-demo","type":"manual","message":"x","status":"open"}`)
 
 	for _, bad := range []string{`{"namespace":"p09-demo","type":"drift"}`, `{"namespace":"p01-demo","type":"other"}`,
 		`{"namespace":"p01-demo","type":"drift","status":"done"}`, `{`} {
@@ -166,6 +169,9 @@ func TestAPIJournal(t *testing.T) {
 		t.Errorf("bad since: %d", w.Code)
 	}
 
+	if d := create(`{"namespace":"p01-demo","type":"drift","message":"legacy"}`); d.Type != "manual" {
+		t.Errorf("drift stored as %q, want manual", d.Type)
+	}
 	// A patch moves updated_at, so a poller with since sees the change.
 	clock = base.Add(2 * time.Hour)
 	w := apiCall(t, s, "PATCH", "/api/journal/1", adminKey, `{"status":"fixed","message":"restored"}`)

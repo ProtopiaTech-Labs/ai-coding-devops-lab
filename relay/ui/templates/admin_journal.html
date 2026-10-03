@@ -13,7 +13,8 @@
       <select class="select" name="type" aria-label="Type">
         <option value="">All types</option>
         <option value="deploy"{{if eq .Filter.Type "deploy"}} selected{{end}}>deploy</option>
-        <option value="drift"{{if eq .Filter.Type "drift"}} selected{{end}}>drift</option>
+        <option value="agent"{{if eq .Filter.Type "agent"}} selected{{end}}>agent</option>
+        <option value="manual"{{if eq .Filter.Type "manual"}} selected{{end}}>manual</option>
       </select>
       <select class="select" name="status" aria-label="Status">
         <option value="">All statuses</option>

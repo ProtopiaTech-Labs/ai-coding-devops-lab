@@ -208,7 +208,7 @@ func TestUIRendersSampleData(t *testing.T) {
 		now, now, now, now, now, now, now)
 	exec(`INSERT INTO journal (participant_id, namespace, type, status, version, run_url, run_name, message, created_at, updated_at)
 		VALUES ('p01', 'p01-demo', 'deploy', 'success', '1.0.7', 'https://github.com/x/actions/runs/1', 'deploy p01-demo 1.0.7 break=none', '<script>alert(1)</script>', ?, ?),
-		       ('p02', 'p02-demo', 'drift', 'open', NULL, NULL, NULL, 'scaled to zero', ?, ?)`, now, now, old, old)
+		       ('p02', 'p02-demo', 'manual', 'open', NULL, NULL, NULL, 'scaled to zero', ?, ?)`, now, now, old, old)
 	exec(`INSERT INTO deliveries (participant_id, kind, event, github_delivery, headers, body, url, status_code, duration_ms, created_at)
 		VALUES ('p01', 'github', 'deployment_status', 'gd-1', '{}', x'', 'https://p01.example/hook', 502, 31, ?)`, now)
 	exec(`INSERT INTO webhook_urls VALUES ('p01', 'https://p01.example/hook', ?)`, now)
@@ -247,7 +247,7 @@ func TestUIRendersSampleData(t *testing.T) {
 		t.Error("stale journal entry not red")
 	}
 	check("/admin/participants/p01", adminKey, "p01 · Jan Kowalski", "p01-demo", "gd-1", "deploy p01-demo 1.0.7 break=none")
-	b = check("/admin/journal?type=drift", adminKey, "scaled to zero")
+	b = check("/admin/journal?type=manual", adminKey, "scaled to zero")
 	if strings.Contains(b, "deploy p01-demo 1.0.7 break=none") {
 		t.Error("type filter ignored")
 	}

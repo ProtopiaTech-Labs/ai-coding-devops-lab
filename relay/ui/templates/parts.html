@@ -57,11 +57,11 @@
       <td class="mono nowrap">{{clock .CreatedAt}}</td>
       {{if $.Admin}}<td><a class="link" href="/admin/participants/{{.Participant}}">{{.Participant}}</a></td>{{end}}
       <td class="mono">{{.Namespace}}</td>
-      <td><span class="badge" data-variant="{{if eq .Type "drift"}}destructive{{else}}secondary{{end}}">{{.Type}}</span></td>
+      <td><span class="badge" data-variant="{{typeVariant .Type}}">{{.Type}}</span></td>
       <td><span class="badge" data-variant="{{statusVariant .Status}}">{{.Status}}</span></td>
-      <td class="msg">{{.Message}}{{if .Command}}<div class="mono small muted">$ {{.Command}}</div>{{end}}</td>
+      <td class="msg">{{.Message}}{{if .Command}}<div class="code small muted">$ {{.Command}}</div>{{end}}{{if .Undo}}<div class="code small muted">undo: {{.Undo}}</div>{{end}}</td>
       <td class="mono">{{.Version}}</td>
-      <td>{{if .RunURL}}<a class="link" href="{{.RunURL}}" target="_blank" rel="noopener">{{if .RunName}}{{.RunName}}{{else}}run{{end}}</a>{{end}}</td>
+      <td>{{if .RunURL}}<a class="link" href="{{.RunURL}}" target="_blank" rel="noopener"{{with .RunName}} title="{{.}}"{{end}}>run</a>{{end}}</td>
     </tr>
   {{else}}
     <tr><td colspan="{{if .Admin}}8{{else}}7{{end}}" class="muted">No journal entries.</td></tr>
