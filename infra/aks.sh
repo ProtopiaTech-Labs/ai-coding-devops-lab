@@ -14,7 +14,8 @@ log() { echo "==> $*"; }
 # $1 assignee object ID, $2 principal type, $3 role, $4 scope
 ensure_role() {
   local count
-  count=$(az role assignment list "${SUB[@]}" --assignee "$1" --role "$3" --scope "$4" --query "length(@)" -o tsv)
+  count=$(az role assignment list "${SUB[@]}" --role "$3" --scope "$4" \
+    --query "length([?principalId=='$1'])" -o tsv)
   if [[ "$count" -gt 0 ]]; then
     log "role '$3' for $1: exists"
   else
@@ -64,7 +65,10 @@ fi
 AKS_ID=$(az aks show "${SUB[@]}" -g "$RESOURCE_GROUP" -n "$AKS_NAME" --query id -o tsv)
 AKS_PRINCIPAL_ID=$(az aks show "${SUB[@]}" -g "$RESOURCE_GROUP" -n "$AKS_NAME" --query identity.principalId -o tsv)
 
-OWNER_ID=$(az ad signed-in-user show --query id -o tsv)
+# The owner is the account that kubelogin (-l azurecli) uses: the `oid` of an az token for the tenant.
+# `az ad signed-in-user show` reads the default tenant, which can differ from the lab tenant.
+OWNER_ID=$(az account get-access-token --tenant "$AZURE_TENANT_ID" --query accessToken -o tsv \
+  | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq -r .oid)
 ensure_role "$OWNER_ID" User "Azure Kubernetes Service RBAC Cluster Admin" "$AKS_ID"
 ensure_role "$AKS_PRINCIPAL_ID" ServicePrincipal "Network Contributor" "$RG_ID"
 
@@ -109,5 +113,5 @@ fi
 
 log "kubeconfig: get credentials and convert for kubelogin"
 az aks get-credentials "${SUB[@]}" -g "$RESOURCE_GROUP" -n "$AKS_NAME" --overwrite-existing --only-show-errors
-kubelogin convert-kubeconfig -l azurecli
+kubelogin convert-kubeconfig -l azurecli --tenant-id "$AZURE_TENANT_ID"
 log "done"
