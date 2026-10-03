@@ -1,0 +1,90 @@
+name: deploy
+
+run-name: deploy ${{ inputs.namespace }} ${{ inputs.version }} break=${{ inputs.break }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: Target namespace (registered or new)
+        type: string
+        required: true
+      version:
+        description: Image tag in GHCR, e.g. 1.0.1
+        type: string
+        required: true
+      break:
+        description: Breakage to apply
+        type: choice
+        default: none
+        options:
+          - none
+          - bad-image
+          - crash
+          - dependency-down
+          - missing-config
+          - oom
+          - quota
+          - slow
+          - unready
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.namespace }}
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-aicodingdevops-lab-sdc-001
+  AKS_NAME: aks-aicodingdevops-lab-sdc-001
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: lab
+      url: https://${{ inputs.namespace }}.lab.patoarchitekci.io/version
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: v1.37.1
+
+      - uses: azure/use-kubelogin@v1
+        with:
+          kubelogin-version: v0.2.20
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials -g "$RESOURCE_GROUP" -n "$AKS_NAME" --overwrite-existing --only-show-errors
+          kubelogin convert-kubeconfig -l azurecli
+
+      - name: Deploy
+        env:
+          NS: ${{ inputs.namespace }}
+          VERSION: ${{ inputs.version }}
+          BREAK: ${{ inputs.break }}
+        run: |
+          args=("$NS" --version "$VERSION")
+          if [ "$BREAK" != none ]; then args+=(--break "$BREAK"); fi
+          scripts/deploy.sh "${args[@]}"
+
+      # Only a healthy deploy waits for the rollout: a breakage is meant to leave pods unhealthy.
+      - name: Wait for rollout
+        if: inputs.break == 'none'
+        env:
+          NS: ${{ inputs.namespace }}
+        run: |
+          for d in orders inventory payments; do
+            kubectl -n "$NS" rollout status "deployment/$d" --timeout=90s
+          done

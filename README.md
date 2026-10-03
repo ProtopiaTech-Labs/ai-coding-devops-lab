@@ -85,3 +85,13 @@ Chaos endpoints are internal: `kubectl -n <namespace> port-forward svc/orders 80
 ```sh
 scripts/deploy-loadgen.sh --version 1.0.N [--dry-run]
 ```
+
+## Deploy workflow
+
+`.github/workflows/deploy.yml` runs `scripts/deploy.sh` from GitHub Actions, so every deploy is a GitHub deployment in environment `lab` and sends `deployment_status` events:
+
+```sh
+gh workflow run deploy.yml -f namespace=<namespace> -f version=1.0.N -f break=none   # or one of the --break types
+```
+
+It logs in with the managed identity (OIDC, `azure/login`), gets the AKS kubeconfig and converts it with `kubelogin -l azurecli`, then runs `deploy.sh`. It builds no image. Runs for the same namespace queue (`concurrency: deploy-<namespace>`), they never cancel each other. With `break=none` the job waits for `kubectl rollout status` of `orders`, `inventory` and `payments` (90 s each) and fails if the shop does not become ready. With a breakage it does not wait: unhealthy pods are the expected result, so the job succeeds once `kubectl apply` succeeds. A namespace that `deploy.sh` refuses fails the job.
